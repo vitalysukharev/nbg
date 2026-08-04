@@ -4,13 +4,16 @@ import rl "vendor:raylib"
 
 DEFAULT_WIDTH :: 800
 DEFAULT_HEIGHT :: 600
+WINDOW_TITLE :: "Hello, World!"
 
 players := 2
 
 main :: proc() {
-	rl.InitWindow(DEFAULT_WIDTH, DEFAULT_HEIGHT, "Hello, World!")
-	rl.SetWindowState({.WINDOW_RESIZABLE})
+	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT})
+	rl.InitWindow(DEFAULT_WIDTH, DEFAULT_HEIGHT, WINDOW_TITLE)
+	rl.SetWindowState({.WINDOW_ALWAYS_RUN})
 	rl.SetTargetFPS(60)
+
 	for !rl.WindowShouldClose() {
 		rl.BeginDrawing()
 		defer rl.EndDrawing()
@@ -49,5 +52,6 @@ main :: proc() {
 			}
 		}
 	}
+
 	rl.CloseWindow()
 }
