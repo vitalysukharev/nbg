@@ -7,6 +7,7 @@ DEFAULT_HEIGHT :: 600
 WINDOW_TITLE :: "Hello, World!"
 
 players := 2
+areas := 0
 
 main :: proc() {
 	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT})
