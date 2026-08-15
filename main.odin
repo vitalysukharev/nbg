@@ -9,12 +9,26 @@ import rl "vendor:raylib"
 WINDOW_WIDTH :: 800
 WINDOW_HEIGHT :: 600
 
-clay_error_handler :: proc "c" (errorData: clay.ErrorData) {
+@(rodata)
+FACTORY_ELEMENT_LABELS := [?]string {
+	"Factory0",
+	"Factory1",
+	"Factory2",
+	"Factory3",
+	"Factory4",
+	"Factory5",
+	"Factory6",
+	"Factory7",
+	"Factory8",
+	"Factory9",
+}
+
+clay_error_handler :: proc "c" (error_data: clay.ErrorData) {
 	context = runtime.default_context()
 	fmt.eprintfln(
 		"Clay error: %s (type: %v)",
-		errorData.errorText.chars[:errorData.errorText.length],
-		errorData.errorType,
+		error_data.errorText.chars[:error_data.errorText.length],
+		error_data.errorType,
 	)
 }
 
@@ -152,6 +166,18 @@ create_layout :: proc() -> clay.ClayArray(clay.RenderCommand) {
 					backgroundColor = {30, 136, 229, 255}, // Accent Blue
 				},
 			)
+
+			for i in 0 ..< 5 {
+				clay.Element(
+					{
+						id = clay.ID(FACTORY_ELEMENT_LABELS[i]),
+						layout = {
+							sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+						},
+						backgroundColor = {35, 130, 105 if i % 2 == 0 else 235, 255}, // Accent Blue
+					},
+				)
+			}
 		}
 
 		// 3. Lower part (equal growing height)
