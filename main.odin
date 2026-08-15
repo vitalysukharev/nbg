@@ -20,10 +20,10 @@ clay_error_handler :: proc "c" (errorData: clay.ErrorData) {
 
 clay_color_to_rl_color :: proc(c: clay.Color) -> rl.Color {
 	return rl.Color {
-		u8(clamp(c.r, 0, 255)),
-		u8(clamp(c.g, 0, 255)),
-		u8(clamp(c.b, 0, 255)),
-		u8(clamp(c.a, 0, 255)),
+		u8(clamp(c[0], 0, 255)),
+		u8(clamp(c[1], 0, 255)),
+		u8(clamp(c[2], 0, 255)),
+		u8(clamp(c[3], 0, 255)),
 	}
 }
 
@@ -113,50 +113,57 @@ create_layout :: proc() -> clay.ClayArray(clay.RenderCommand) {
 	clay.BeginLayout()
 
 	// Main root container arranged vertically (Top to Bottom)
-	if clay.UI(clay.ID("MainContainer"))({
-		layout = {
-			sizing = {
-				width = clay.SizingGrow(),
-				height = clay.SizingGrow(),
-			},
-			layoutDirection = .TopToBottom,
-			childGap = 8,
-			padding = clay.PaddingAll(8),
-		},
-		backgroundColor = {18, 22, 30, 255},
-	}) {
-		// 1. Upper part (equal growing height)
-		if clay.UI(clay.ID("TopPart"))({
-			layout = {
-				sizing = {
-					width = clay.SizingGrow(),
-					height = clay.SizingGrow(),
+	{
+		clay.UI(
+			{
+				id = clay.ID("MainContainer"),
+				layout = {
+					sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+					layoutDirection = .TopToBottom,
+					childGap = 8,
+					padding = clay.PaddingAll(8),
 				},
+				backgroundColor = {18, 22, 30, 255},
 			},
-			backgroundColor = {41, 98, 255, 255}, // Blue
-		}) {}
+		)
+
+		// 1. Upper part (equal growing height)
+		{
+			clay.UI(
+				{
+					id = clay.ID("TopPart"),
+					layout = {sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()}},
+					backgroundColor = {41, 98, 255, 255}, // Blue
+				},
+			)
+		}
 
 		// 2. Central part (fixed height)
-		if clay.UI(clay.ID("CenterPart"))({
-			layout = {
-				sizing = {
-					width = clay.SizingGrow(),
-					height = clay.SizingFixed(200), // Fixed height
+		{
+			clay.UI(
+				{
+					id = clay.ID("CenterPart"),
+					layout = {
+						sizing = {
+							width  = clay.SizingGrow(),
+							height = clay.SizingFixed(200), // Fixed height -> this should take 3x Tile height
+						},
+					},
+					backgroundColor = {30, 136, 229, 255}, // Accent Blue
 				},
-			},
-			backgroundColor = {30, 136, 229, 255}, // Accent Blue
-		}) {}
+			)
+		}
 
 		// 3. Lower part (equal growing height)
-		if clay.UI(clay.ID("BottomPart"))({
-			layout = {
-				sizing = {
-					width = clay.SizingGrow(),
-					height = clay.SizingGrow(),
+		{
+			clay.UI(
+				{
+					id = clay.ID("BottomPart"),
+					layout = {sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()}},
+					backgroundColor = {41, 98, 255, 255}, // Blue
 				},
-			},
-			backgroundColor = {41, 98, 255, 255}, // Blue
-		}) {}
+			)
+		}
 	}
 
 	return clay.EndLayout(rl.GetFrameTime())
