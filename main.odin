@@ -124,7 +124,7 @@ render_clay_commands :: proc(render_commands: ^clay.ClayArray(clay.RenderCommand
 }
 
 tile_max_size :: proc(width, height: f32) -> f32 {
-	// hardcoding for 2 players and vertical layout for XAudio2
+	// hardcoding for 2 players and vertical layout for now
 	return min(width / (2 * 2 + 2) / 2, height / 20)
 }
 
