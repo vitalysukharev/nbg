@@ -5,8 +5,6 @@ import "clay"
 import "core:c"
 import "core:fmt"
 import rl "vendor:raylib"
-import "vendor:windows/XAudio2"
-import "vendor:windows/wasapi"
 
 WINDOW_WIDTH :: 800
 WINDOW_HEIGHT :: 600
