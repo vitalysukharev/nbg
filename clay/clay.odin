@@ -552,12 +552,7 @@ foreign Clay {
 	_OpenTextElement :: proc(text: String, textConfig: TextElementConfig) ---
 }
 
-CloseElement :: proc() {
-	_CloseElement()
-}
-
-@(deferred_none = CloseElement)
-UI :: proc(config: ElementDeclaration = {}) {
+Begin :: proc(config: ElementDeclaration = {}) {
 	if config.id.id != 0 {
 		_OpenElementWithId(config.id)
 	} else {
@@ -565,6 +560,15 @@ UI :: proc(config: ElementDeclaration = {}) {
 	}
 	_ConfigureOpenElement(_to_c_element_declaration(config))
 }
+
+End :: proc() {
+	_CloseElement()
+}
+
+BeginElement :: Begin
+EndElement   :: End
+OpenElement  :: Begin
+CloseElement :: End
 
 Element :: proc(config: ElementDeclaration = {}) {
 	if config.id.id != 0 {

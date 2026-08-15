@@ -130,126 +130,104 @@ tile_max_size :: proc(width, height: f32) -> f32 {
 
 create_layout :: proc(width, height: f32) -> clay.ClayArray(clay.RenderCommand) {
 	clay.BeginLayout()
-
-	// Main root container arranged vertically (Top to Bottom)
-	{
-		clay.UI(
-			{
-				id = clay.ID("MainContainer"),
-				layout = {
-					sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
-					layoutDirection = .TopToBottom,
-					//childGap = 8,
-					//padding = clay.PaddingAll(8),
+	clay.Begin(
+		{
+			id = clay.ID("MainContainer"),
+			layout = {
+				sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+				layoutDirection = .TopToBottom,
+				//childGap = 8,
+				//padding = clay.PaddingAll(8),
+			},
+			backgroundColor = {18, 22, 30, 255},
+		},
+	)
+	// 1. Upper part (equal growing height)
+	clay.Element(
+		{
+			id = clay.ID("TopPart"),
+			layout = {sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()}},
+			backgroundColor = {41, 98, 255, 255}, // Blue
+		},
+	)
+	// 2. Central part (fixed height)
+	tile_size := tile_max_size(width, height)
+	clay.Begin(
+		{
+			id = clay.ID("CenterPart"),
+			layout = {
+				layoutDirection = .LeftToRight,
+				sizing = {
+					width  = clay.SizingGrow(),
+					height = clay.SizingFixed(3 * tile_size), // Fixed height -> 3x tile height
 				},
-				backgroundColor = {18, 22, 30, 255},
+				childAlignment = {x = .Center, y = .Center},
+				//childGap = 12,
+				//padding = clay.PaddingAll(4),
+			},
+			backgroundColor = {30, 136, 229, 255}, // Accent Blue
+		},
+	)
+
+	for i in 0 ..< 6 {
+		clay.Begin(
+			{
+				id = clay.ID_LOCAL("Factory", u32(i)),
+				layout = {
+					layoutDirection = .TopToBottom,
+					sizing = {width = clay.SizingFixed(2 * tile_size), height = clay.SizingGrow()},
+					//childGap = 2,
+					//padding = clay.PaddingAll(2),
+				},
+				backgroundColor = {45, 55, 72, 255},
+				cornerRadius = clay.CornerRadiusAll(4),
 			},
 		)
-
-		// 1. Upper part (equal growing height)
-		{
-			clay.UI(
+		defer clay.End()
+		for row in 0 ..< 3 {
+			clay.Begin(
 				{
-					id = clay.ID("TopPart"),
-					layout = {sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()}},
-					backgroundColor = {41, 98, 255, 255}, // Blue
-				},
-			)
-		}
-
-		// 2. Central part (fixed height)
-		{
-			tile_size := tile_max_size(width, height)
-
-			clay.UI(
-				{
-					id = clay.ID("CenterPart"),
+					id = clay.ID_LOCAL("Row", u32(row)),
 					layout = {
 						layoutDirection = .LeftToRight,
-						sizing = {
-							width  = clay.SizingGrow(),
-							height = clay.SizingFixed(3 * tile_size), // Fixed height -> 3x tile height
-						},
-						childAlignment = {x = .Center, y = .Center},
-						//childGap = 12,
-						//padding = clay.PaddingAll(4),
+						sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+						//childGap = 2,
 					},
-					backgroundColor = {30, 136, 229, 255}, // Accent Blue
 				},
 			)
-
-			for i in 0 ..< 6 {
-				{
-					clay.UI(
-						{
-							id = clay.ID_LOCAL("Factory", u32(i)),
-							layout = {
-								layoutDirection = .TopToBottom,
-								sizing = {
-									width = clay.SizingFixed(2 * tile_size),
-									height = clay.SizingGrow(),
-								},
-								//childGap = 2,
-								//padding = clay.PaddingAll(2),
-							},
-							backgroundColor = {45, 55, 72, 255},
-							cornerRadius = clay.CornerRadiusAll(4),
+			defer clay.End()
+			for col in 0 ..< 2 {
+				clay.Element(
+					{
+						id = clay.ID_LOCAL("Col", u32(col)),
+						layout = {
+							sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
 						},
-					)
-
-					for row in 0 ..< 3 {
-						{
-							clay.UI(
-								{
-									id = clay.ID_LOCAL("Row", u32(row)),
-									layout = {
-										layoutDirection = .LeftToRight,
-										sizing = {
-											width = clay.SizingGrow(),
-											height = clay.SizingGrow(),
-										},
-										//childGap = 2,
-									},
-								},
-							)
-
-							for col in 0 ..< 2 {
-								clay.Element(
-									{
-										id = clay.ID_LOCAL("Tile", u32(col)),
-										layout = {
-											sizing = {
-												width = clay.SizingGrow(),
-												height = clay.SizingGrow(),
-											},
-										},
-										backgroundColor = {
-											f32(40 + (i * 35) % 200),
-											f32(60 + (row * 60) % 180),
-											f32(80 + (col * 100) % 160),
-											255,
-										},
-										cornerRadius = clay.CornerRadiusAll(2),
-									},
-								)
-							}
-						}
-					}
-				}
+						backgroundColor = {
+							f32(40 + (i * 35) % 200),
+							f32(60 + (row * 60) % 180),
+							f32(80 + (col * 100) % 160),
+							255,
+						},
+						cornerRadius = clay.CornerRadiusAll(2),
+					},
+				)
 			}
 		}
-
-		// 3. Lower part (equal growing height)
-		{
-			clay.UI(
-				{
-					id = clay.ID("BottomPart"),
-					layout = {sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()}},
-					backgroundColor = {41, 98, 255, 255}, // Blue
-				},
-			)
-		}
 	}
+
+	clay.End()
+
+	// 3. Lower part (equal growing height)
+	clay.Element(
+		{
+			id = clay.ID("BottomPart"),
+			layout = {sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()}},
+			backgroundColor = {41, 98, 255, 255}, // Blue
+		},
+	)
+
+	clay.End()
 
 	return clay.EndLayout(rl.GetFrameTime())
 }
