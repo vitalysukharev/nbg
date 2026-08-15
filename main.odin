@@ -5,6 +5,8 @@ import "clay"
 import "core:c"
 import "core:fmt"
 import rl "vendor:raylib"
+import "vendor:windows/XAudio2"
+import "vendor:windows/wasapi"
 
 WINDOW_WIDTH :: 800
 WINDOW_HEIGHT :: 600
@@ -123,7 +125,12 @@ render_clay_commands :: proc(render_commands: ^clay.ClayArray(clay.RenderCommand
 	}
 }
 
-create_layout :: proc() -> clay.ClayArray(clay.RenderCommand) {
+tile_max_size :: proc(width, height: f32) -> f32 {
+	// hardcoding for 2 players and vertical layout for XAudio2
+	return min(width / (2 * 2 + 2) / 2, height / 20)
+}
+
+create_layout :: proc(width, height: f32) -> clay.ClayArray(clay.RenderCommand) {
 	clay.BeginLayout()
 
 	// Main root container arranged vertically (Top to Bottom)
@@ -134,8 +141,8 @@ create_layout :: proc() -> clay.ClayArray(clay.RenderCommand) {
 				layout = {
 					sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
 					layoutDirection = .TopToBottom,
-					childGap = 8,
-					padding = clay.PaddingAll(8),
+					//childGap = 8,
+					//padding = clay.PaddingAll(8),
 				},
 				backgroundColor = {18, 22, 30, 255},
 			},
@@ -154,29 +161,83 @@ create_layout :: proc() -> clay.ClayArray(clay.RenderCommand) {
 
 		// 2. Central part (fixed height)
 		{
+			tile_size := tile_max_size(width, height)
+
 			clay.UI(
 				{
 					id = clay.ID("CenterPart"),
 					layout = {
+						layoutDirection = .LeftToRight,
 						sizing = {
 							width  = clay.SizingGrow(),
-							height = clay.SizingFixed(200), // Fixed height -> this should take 3x Tile height
+							height = clay.SizingFixed(3 * tile_size), // Fixed height -> 3x tile height
 						},
+						childAlignment = {x = .Center, y = .Center},
+						//childGap = 12,
+						//padding = clay.PaddingAll(4),
 					},
 					backgroundColor = {30, 136, 229, 255}, // Accent Blue
 				},
 			)
 
-			for i in 0 ..< 5 {
-				clay.Element(
-					{
-						id = clay.ID(FACTORY_ELEMENT_LABELS[i]),
-						layout = {
-							sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+			for i in 0 ..< 6 {
+				{
+					clay.UI(
+						{
+							id = clay.ID_LOCAL("Factory", u32(i)),
+							layout = {
+								layoutDirection = .TopToBottom,
+								sizing = {
+									width = clay.SizingFixed(2 * tile_size),
+									height = clay.SizingGrow(),
+								},
+								//childGap = 2,
+								//padding = clay.PaddingAll(2),
+							},
+							backgroundColor = {45, 55, 72, 255},
+							cornerRadius = clay.CornerRadiusAll(4),
 						},
-						backgroundColor = {35, 130, 105 if i % 2 == 0 else 235, 255}, // Accent Blue
-					},
-				)
+					)
+
+					for row in 0 ..< 3 {
+						{
+							clay.UI(
+								{
+									id = clay.ID_LOCAL("Row", u32(row)),
+									layout = {
+										layoutDirection = .LeftToRight,
+										sizing = {
+											width = clay.SizingGrow(),
+											height = clay.SizingGrow(),
+										},
+										//childGap = 2,
+									},
+								},
+							)
+
+							for col in 0 ..< 2 {
+								clay.Element(
+									{
+										id = clay.ID_LOCAL("Tile", u32(col)),
+										layout = {
+											sizing = {
+												width = clay.SizingGrow(),
+												height = clay.SizingGrow(),
+											},
+										},
+										backgroundColor = {
+											f32(40 + (i * 35) % 200),
+											f32(60 + (row * 60) % 180),
+											f32(80 + (col * 100) % 160),
+											255,
+										},
+										cornerRadius = clay.CornerRadiusAll(2),
+									},
+								)
+							}
+						}
+					}
+				}
 			}
 		}
 
@@ -226,7 +287,7 @@ main :: proc() {
 			rl.GetFrameTime(),
 		)
 
-		render_commands := create_layout()
+		render_commands := create_layout(f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight()))
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.BLACK)
