@@ -125,10 +125,190 @@ render_clay_commands :: proc(render_commands: ^clay.ClayArray(clay.RenderCommand
 
 tile_max_size :: proc(width, height: f32) -> f32 {
 	// hardcoding for 2 players and vertical layout for now
-	return min(width / (2 * 2 + 2) / 2, height / 20)
+	return min(width / (2 * 2 + 2) / 2, height / 19)
+}
+
+@(rodata)
+WALL_COLORS := [5]clay.Color {
+	{41, 128, 185, 255},  // Blue
+	{243, 156, 18, 255},  // Yellow
+	{231, 76, 60, 255},   // Red
+	{44, 62, 80, 255},    // Black
+	{207, 216, 220, 255}, // White / Light Slate
+}
+
+render_player_board :: proc(player_idx: u32, tile_size: f32) {
+	clay.Begin(
+		{
+			id = clay.ID_LOCAL("PlayerBoard", player_idx),
+			layout = {
+				layoutDirection = .TopToBottom,
+				sizing = {
+					width  = clay.SizingFixed(10 * tile_size),
+					height = clay.SizingFixed(8 * tile_size),
+				},
+			},
+			backgroundColor = {48, 42, 60, 255},
+		},
+	)
+	defer clay.End()
+
+	// Upper part: Board (Pattern lines) on left, Wall on right
+	clay.Begin(
+		{
+			id = clay.ID_LOCAL("UpperArea"),
+			layout = {
+				layoutDirection = .LeftToRight,
+				sizing = {
+					width  = clay.SizingGrow(),
+					height = clay.SizingFixed(5 * tile_size),
+				},
+			},
+		},
+	)
+	{
+		// 1. Board (Pattern Lines - 5 rows)
+		clay.Begin(
+			{
+				id = clay.ID_LOCAL("Board"),
+				layout = {
+					layoutDirection = .TopToBottom,
+					sizing = {
+						width  = clay.SizingFixed(5 * tile_size),
+						height = clay.SizingGrow(),
+					},
+				},
+			},
+		)
+		for row in 0 ..< 5 {
+			clay.Begin(
+				{
+					id = clay.ID_LOCAL("Row", u32(row)),
+					layout = {
+						layoutDirection = .LeftToRight,
+						sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+					},
+				},
+			)
+			for col in 0 ..< 5 {
+				if col < 4 - row {
+					// Empty spacer on the left
+					clay.Element(
+						{
+							layout = {
+								sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+							},
+						},
+					)
+				} else {
+					// Active pattern line slot
+					clay.Element(
+						{
+							id = clay.ID_LOCAL("Col", u32(col)),
+							layout = {
+								sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+							},
+							backgroundColor = {68, 60, 82, 255},
+							cornerRadius = clay.CornerRadiusAll(2),
+						},
+					)
+				}
+			}
+			clay.End()
+		}
+		clay.End()
+
+		// 2. Wall (5x5 grid)
+		clay.Begin(
+			{
+				id = clay.ID_LOCAL("Wall"),
+				layout = {
+					layoutDirection = .TopToBottom,
+					sizing = {
+						width  = clay.SizingFixed(5 * tile_size),
+						height = clay.SizingGrow(),
+					},
+				},
+			},
+		)
+		for row in 0 ..< 5 {
+			clay.Begin(
+				{
+					id = clay.ID_LOCAL("Row", u32(row)),
+					layout = {
+						layoutDirection = .LeftToRight,
+						sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+					},
+				},
+			)
+			for col in 0 ..< 5 {
+				color_idx := (col - row + 5) % 5
+				clay.Element(
+					{
+						id = clay.ID_LOCAL("Col", u32(col)),
+						layout = {
+							sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+						},
+						backgroundColor = WALL_COLORS[color_idx],
+						cornerRadius = clay.CornerRadiusAll(2),
+					},
+				)
+			}
+			clay.End()
+		}
+		clay.End()
+	}
+	clay.End()
+
+	// Middle spacer
+	clay.Element(
+		{
+			layout = {
+				sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+			},
+		},
+	)
+
+	// 3. Floor (7 penalty slots)
+	clay.Begin(
+		{
+			id = clay.ID_LOCAL("Floor"),
+			layout = {
+				layoutDirection = .LeftToRight,
+				sizing = {
+					width  = clay.SizingFixed(7 * tile_size),
+					height = clay.SizingFixed(tile_size),
+				},
+			},
+		},
+	)
+	for col in 0 ..< 7 {
+		clay.Element(
+			{
+				id = clay.ID_LOCAL("Col", u32(col)),
+				layout = {
+					sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+				},
+				backgroundColor = {75, 52, 64, 255},
+				cornerRadius = clay.CornerRadiusAll(2),
+			},
+		)
+	}
+	clay.End()
+
+	// Bottom spacer
+	clay.Element(
+		{
+			layout = {
+				sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+			},
+		},
+	)
 }
 
 create_layout :: proc(width, height: f32) -> clay.ClayArray(clay.RenderCommand) {
+	tile_size := tile_max_size(width, height)
+
 	clay.BeginLayout()
 	clay.Begin(
 		{
@@ -143,15 +323,20 @@ create_layout :: proc(width, height: f32) -> clay.ClayArray(clay.RenderCommand) 
 		},
 	)
 	// 1. Upper part (equal growing height)
-	clay.Element(
+	clay.Begin(
 		{
-			id = clay.ID("TopPart"),
-			layout = {sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()}},
-			backgroundColor = {41, 98, 255, 255}, // Blue
+			id = clay.ID_LOCAL("Player", u32(0)),
+			layout = {
+				sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+				layoutDirection = .LeftToRight,
+				childAlignment = {x = .Center, y = .Bottom},
+			},
 		},
 	)
+	render_player_board(0, tile_size)
+	clay.End()
+
 	// 2. Central part (fixed height)
-	tile_size := tile_max_size(width, height)
 	clay.Begin(
 		{
 			id = clay.ID("CenterPart"),
@@ -219,13 +404,18 @@ create_layout :: proc(width, height: f32) -> clay.ClayArray(clay.RenderCommand) 
 	clay.End()
 
 	// 3. Lower part (equal growing height)
-	clay.Element(
+	clay.Begin(
 		{
-			id = clay.ID("BottomPart"),
-			layout = {sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()}},
-			backgroundColor = {41, 98, 255, 255}, // Blue
+			id = clay.ID_LOCAL("Player", u32(1)),
+			layout = {
+				sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+				layoutDirection = .LeftToRight,
+				childAlignment = {x = .Center, y = .Top},
+			},
 		},
 	)
+	render_player_board(1, tile_size)
+	clay.End()
 
 	clay.End()
 
