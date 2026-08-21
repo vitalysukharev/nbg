@@ -3,13 +3,29 @@ package main
 import "base:runtime"
 import "clay"
 import "core:fmt"
+import "core:strings"
 import rl "vendor:raylib"
+
+measure_clay_text :: proc "c" (
+	text: clay.StringSlice,
+	config: ^clay.TextElementConfig,
+	userData: rawptr,
+) -> clay.Dimensions {
+	context = runtime.default_context()
+	text_str := string(text.chars[:text.length])
+	c_str := strings.clone_to_cstring(text_str, context.temp_allocator)
+	font := rl.GetFontDefault()
+	font_size := f32(config.fontSize) if config != nil && config.fontSize > 0 else DEFAULT_FONT_SIZE
+	spacing := f32(config.letterSpacing) if config != nil else 0.0
+	size := rl.MeasureTextEx(font, c_str, font_size, spacing)
+	return {width = size.x, height = size.y}
+}
 
 clay_error_handler :: proc "c" (error_data: clay.ErrorData) {
 	context = runtime.default_context()
 	fmt.eprintfln(
 		"Clay error: %s (type: %v)",
-		error_data.errorText.chars[:error_data.errorText.length],
+		string(error_data.errorText.chars[:error_data.errorText.length]),
 		error_data.errorType,
 	)
 }
@@ -63,11 +79,10 @@ render_clay_commands :: proc(render_commands: ^clay.ClayArray(clay.RenderCommand
 			rect := cmd.renderData.rectangle
 			color := clay_color_to_rl_color(rect.backgroundColor)
 			rec := bb_to_rl_rec(cmd.boundingBox)
-			if rect.cornerRadius.topLeft > 0 {
-				roundness :=
-					(rect.cornerRadius.topLeft * 2.0) /
-					min(cmd.boundingBox.width, cmd.boundingBox.height)
-				rl.DrawRectangleRounded(rec, roundness, 8, color)
+			min_dim := min(cmd.boundingBox.width, cmd.boundingBox.height)
+			if rect.cornerRadius.topLeft > 0 && min_dim > 0 {
+				roundness := (rect.cornerRadius.topLeft * 2.0) / min_dim
+				rl.DrawRectangleRounded(rec, roundness, CORNER_ROUND_SEGMENTS, color)
 			} else {
 				rl.DrawRectangleRec(rec, color)
 			}
@@ -82,7 +97,23 @@ render_clay_commands :: proc(render_commands: ^clay.ClayArray(clay.RenderCommand
 			)
 		case .ScissorEnd:
 			rl.EndScissorMode()
-		case .Text, .Image, .OverlayColorStart, .OverlayColorEnd, .Custom:
+		case .Text:
+			text_data := cmd.renderData.text
+			text_str := string(text_data.stringContents.chars[:text_data.stringContents.length])
+			c_str := strings.clone_to_cstring(text_str, context.temp_allocator)
+			font := rl.GetFontDefault()
+			font_size := f32(text_data.fontSize) if text_data.fontSize > 0 else DEFAULT_FONT_SIZE
+			spacing := f32(text_data.letterSpacing)
+			color := clay_color_to_rl_color(text_data.textColor)
+			rl.DrawTextEx(
+				font,
+				c_str,
+				{cmd.boundingBox.x, cmd.boundingBox.y},
+				font_size,
+				spacing,
+				color,
+			)
+		case .Image, .OverlayColorStart, .OverlayColorEnd, .Custom:
 		// Unused render commands
 		}
 	}
