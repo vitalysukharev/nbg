@@ -5,7 +5,7 @@ import "core:c"
 import rl "vendor:raylib"
 
 main :: proc() {
-	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT})
+	rl.SetConfigFlags({.WINDOW_RESIZABLE})
 	rl.InitWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, WINDOW_TITLE)
 	rl.SetTargetFPS(TARGET_FPS)
 	defer rl.CloseWindow()
