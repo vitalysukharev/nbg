@@ -4,6 +4,8 @@ import "clay"
 import "core:c"
 import rl "vendor:raylib"
 
+some_proc :: proc() {}
+
 main :: proc() {
 	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT})
 	rl.InitWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, WINDOW_TITLE)
@@ -29,7 +31,8 @@ main :: proc() {
 		free_all(context.temp_allocator)
 
 		if rl.IsKeyPressed(.SPACE) {
-			player_count = player_count + 1 if player_count < MAX_PLAYER_COUNT else MIN_PLAYER_COUNT
+			player_count =
+				player_count + 1 if player_count < MAX_PLAYER_COUNT else MIN_PLAYER_COUNT
 		}
 
 		screen_w := f32(rl.GetScreenWidth())
