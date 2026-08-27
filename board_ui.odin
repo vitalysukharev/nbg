@@ -242,18 +242,22 @@ render_player_board :: proc(player_idx: u32, plo: PlayerBoardLayoutOptions, tile
 }
 
 render_factory_disc :: proc(disc_idx: int, flo: FactoriesLayoutOptions, tile_size: f32) {
-	disc_w := f32(flo.tile_x_count) * tile_size
-	disc_h := f32(flo.tile_y_count) * tile_size
-
 	clay.Begin(
 		{
 			id = clay.ID_LOCAL("Factory", u32(disc_idx)),
 			layout = {
 				layoutDirection = .TopToBottom,
 				sizing = {
-					width = clay.SizingFixed(disc_w),
-					height = clay.SizingFixed(disc_h),
+					width = clay.SizingGrow(),
+					height = clay.SizingGrow(),
 				},
+				padding = {
+					left = FACTORY_PADDING,
+					right = FACTORY_PADDING,
+					top = FACTORY_PADDING,
+					bottom = FACTORY_PADDING,
+				},
+				childGap = FACTORY_TILE_GAP,
 			},
 			backgroundColor = COLOR_BG_FACTORY_DISC,
 			cornerRadius = CORNER_RADIUS_FACTORY,
@@ -268,6 +272,7 @@ render_factory_disc :: proc(disc_idx: int, flo: FactoriesLayoutOptions, tile_siz
 				layout = {
 					layoutDirection = .LeftToRight,
 					sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+					childGap = FACTORY_TILE_GAP,
 				},
 			},
 		)
@@ -307,6 +312,7 @@ render_factories :: proc(is_horizontal: bool, tile_size: f32, flo: FactoriesLayo
 					height = clay.SizingGrow() if is_horizontal else clay.SizingFixed(total_h),
 				},
 				childAlignment = {x = .Center, y = .Center},
+				childGap = FACTORY_GAP,
 			},
 			backgroundColor = COLOR_BG_FACTORY_AREA,
 		},
@@ -322,10 +328,11 @@ render_factories :: proc(is_horizontal: bool, tile_size: f32, flo: FactoriesLayo
 					layout = {
 						layoutDirection = .TopToBottom,
 						sizing = {
-							width = clay.SizingFixed(f32(flo.tile_x_count) * tile_size),
+							width = clay.SizingGrow(),
 							height = clay.SizingFixed(total_h),
 						},
 						childAlignment = {x = .Center, y = .Center},
+						childGap = FACTORY_GAP,
 					},
 				},
 			)
@@ -345,9 +352,10 @@ render_factories :: proc(is_horizontal: bool, tile_size: f32, flo: FactoriesLayo
 						layoutDirection = .LeftToRight,
 						sizing = {
 							width = clay.SizingFixed(total_w),
-							height = clay.SizingFixed(f32(flo.tile_y_count) * tile_size),
+							height = clay.SizingGrow(),
 						},
 						childAlignment = {x = .Center, y = .Center},
+						childGap = FACTORY_GAP,
 					},
 				},
 			)

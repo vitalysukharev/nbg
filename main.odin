@@ -4,8 +4,6 @@ import "clay"
 import "core:c"
 import rl "vendor:raylib"
 
-some_proc :: proc() {}
-
 main :: proc() {
 	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT})
 	rl.InitWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, WINDOW_TITLE)
