@@ -2,19 +2,6 @@ package main
 
 import "clay"
 
-// --- Window & Lifecycle Settings ---
-WINDOW_TITLE :: "Clay - Board Game UI"
-DEFAULT_WINDOW_WIDTH :: 800
-DEFAULT_WINDOW_HEIGHT :: 600
-TARGET_FPS :: 60
-
-// --- Game Rules & Board Constraints ---
-MIN_PLAYER_COUNT :: 2
-MAX_PLAYER_COUNT :: 4
-WALL_DIMENSION :: 5
-FLOOR_SIZE :: 7
-AREAS_GAP_IN_TILES :: 0.5
-
 // --- Theme Colors ---
 COLOR_BG_APP :: clay.Color{18, 22, 30, 255} // Main application background
 COLOR_BG_PLAYER_BOARD :: clay.Color{48, 42, 60, 255} // Player board background
@@ -26,11 +13,11 @@ COLOR_TEXT_PATTERN_COUNT :: clay.Color{210, 215, 230, 255} // Text for minified 
 
 // Wall Colors (Azul 5-tile standard cycle)
 @(rodata)
-WALL_COLORS := [WALL_DIMENSION]clay.Color{
-	{41, 128, 185, 255},  // Blue
-	{243, 156, 18, 255},  // Yellow
-	{231, 76, 60, 255},   // Red
-	{44, 62, 80, 255},    // Black
+WALL_COLORS := [WALL_DIMENSION]clay.Color {
+	{41, 128, 185, 255}, // Blue
+	{243, 156, 18, 255}, // Yellow
+	{231, 76, 60, 255}, // Red
+	{44, 62, 80, 255}, // Black
 	{207, 216, 220, 255}, // White / Light Slate
 }
 
@@ -38,14 +25,24 @@ WALL_COLORS := [WALL_DIMENSION]clay.Color{
 @(rodata)
 PATTERN_LINE_LABELS := [WALL_DIMENSION]string{"1", "2", "3", "4", "5"}
 
+// Placeholder colors distinguish factory tiles from the board palette.
+factory_tile_color :: proc(disc_idx, row, col: int) -> clay.Color {
+	return {
+		f32(40 + (disc_idx * 35) % 200),
+		f32(60 + (row * 60) % 180),
+		f32(80 + (col * 100) % 160),
+		255,
+	}
+}
+
 // --- Geometry & Typography Metrics ---
 CORNER_RADIUS_TILE :: clay.CornerRadius{2, 2, 2, 2}
 CORNER_RADIUS_FACTORY :: clay.CornerRadius{4, 4, 4, 4}
 CORNER_ROUND_SEGMENTS :: 8
-FACTORY_TILE_GAP : u16 : 2
-FACTORY_PADDING : u16 : 2
-FACTORY_GAP : u16 : 4
+AREAS_GAP_IN_TILES :: 0.5
+FACTORY_TILE_GAP_IN_TILES :: 0.1
+FACTORY_PADDING_IN_TILES :: 0.1
+FACTORY_GAP_IN_TILES :: 0.2
 DEFAULT_FONT_SIZE :: 10.0
 MIN_PATTERN_COUNT_FONT_SIZE :: 8.0
 PATTERN_COUNT_FONT_RATIO :: 0.45
-

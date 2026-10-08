@@ -6,18 +6,23 @@ import "core:fmt"
 import "core:strings"
 import rl "vendor:raylib"
 
+clay_text_to_cstring :: proc(text: clay.StringSlice) -> cstring {
+	return strings.clone_to_cstring(string(text.chars[:text.length]), context.temp_allocator)
+}
+
+clay_font_size :: proc(size: u16) -> f32 {
+	return f32(size) if size > 0 else DEFAULT_FONT_SIZE
+}
+
 measure_clay_text :: proc "c" (
 	text: clay.StringSlice,
 	config: ^clay.TextElementConfig,
-	userData: rawptr,
+	user_data: rawptr,
 ) -> clay.Dimensions {
 	context = runtime.default_context()
-	text_str := string(text.chars[:text.length])
-	c_str := strings.clone_to_cstring(text_str, context.temp_allocator)
-	font := rl.GetFontDefault()
-	font_size := f32(config.fontSize) if config != nil && config.fontSize > 0 else DEFAULT_FONT_SIZE
+	font_size := clay_font_size(config.fontSize if config != nil else 0)
 	spacing := f32(config.letterSpacing) if config != nil else 0.0
-	size := rl.MeasureTextEx(font, c_str, font_size, spacing)
+	size := rl.MeasureTextEx(rl.GetFontDefault(), clay_text_to_cstring(text), font_size, spacing)
 	return {width = size.x, height = size.y}
 }
 
@@ -30,7 +35,7 @@ clay_error_handler :: proc "c" (error_data: clay.ErrorData) {
 	)
 }
 
-clay_color_to_rl_color :: #force_inline proc(c: clay.Color) -> rl.Color {
+clay_color_to_rl_color :: proc(c: clay.Color) -> rl.Color {
 	return rl.Color {
 		u8(clamp(c[0], 0, 255)),
 		u8(clamp(c[1], 0, 255)),
@@ -39,11 +44,40 @@ clay_color_to_rl_color :: #force_inline proc(c: clay.Color) -> rl.Color {
 	}
 }
 
-bb_to_rl_rec :: #force_inline proc(bb: clay.BoundingBox) -> rl.Rectangle {
+bb_to_rl_rec :: proc(bb: clay.BoundingBox) -> rl.Rectangle {
 	return rl.Rectangle{bb.x, bb.y, bb.width, bb.height}
 }
 
-draw_clay_border :: proc(bb: clay.BoundingBox, border: clay.BorderRenderData) {
+draw_clay_rectangle :: proc(
+	renderer: ^Renderer,
+	bb: clay.BoundingBox,
+	rect: clay.RectangleRenderData,
+) {
+	radii := rect.cornerRadius
+	if radii.topLeft != radii.topRight ||
+	   radii.topLeft != radii.bottomLeft ||
+	   radii.topLeft != radii.bottomRight {
+		warn_renderer_limitation(renderer, .Unequal_Corners)
+	}
+	color := clay_color_to_rl_color(rect.backgroundColor)
+	rec := bb_to_rl_rec(bb)
+	min_dim := min(bb.width, bb.height)
+	if radii.topLeft > 0 && min_dim > 0 {
+		roundness := clamp((radii.topLeft * 2.0) / min_dim, 0, 1)
+		rl.DrawRectangleRounded(rec, roundness, CORNER_ROUND_SEGMENTS, color)
+	} else {
+		rl.DrawRectangleRec(rec, color)
+	}
+}
+
+draw_clay_border :: proc(renderer: ^Renderer, bb: clay.BoundingBox, border: clay.BorderRenderData) {
+	radii := border.cornerRadius
+	if radii.topLeft > 0 ||
+	   radii.topRight > 0 ||
+	   radii.bottomLeft > 0 ||
+	   radii.bottomRight > 0 {
+		warn_renderer_limitation(renderer, .Rounded_Borders)
+	}
 	color := clay_color_to_rl_color(border.color)
 	if border.width.left > 0 {
 		rl.DrawRectangleRec({bb.x, bb.y, f32(border.width.left), bb.height}, color)
@@ -70,24 +104,52 @@ draw_clay_border :: proc(bb: clay.BoundingBox, border: clay.BorderRenderData) {
 	}
 }
 
-render_clay_commands :: proc(render_commands: ^clay.ClayArray(clay.RenderCommand)) {
-	for i in 0 ..< render_commands.length {
-		cmd := clay.RenderCommandArray_Get(render_commands, i)
+draw_clay_text :: proc(renderer: ^Renderer, bb: clay.BoundingBox, text: clay.TextRenderData) {
+	if text.fontId != 0 {
+		warn_renderer_limitation(renderer, .Font)
+	}
+	rl.DrawTextEx(
+		rl.GetFontDefault(),
+		clay_text_to_cstring(text.stringContents),
+		{bb.x, bb.y},
+		clay_font_size(text.fontSize),
+		f32(text.letterSpacing),
+		clay_color_to_rl_color(text.textColor),
+	)
+}
+
+// Report each unsupported feature once in debug builds, without flooding each frame.
+Renderer_Limitation :: enum {
+	Unequal_Corners,
+	Rounded_Borders,
+	Image,
+	Overlay,
+	Custom,
+	Font,
+}
+Renderer :: struct {
+	warned: bit_set[Renderer_Limitation],
+}
+
+warn_renderer_limitation :: proc(renderer: ^Renderer, feature: Renderer_Limitation) {
+	when ODIN_DEBUG {
+		if feature not_in renderer.warned {
+			fmt.eprintfln("Renderer does not support: %v", feature)
+			renderer.warned += {feature}
+		}
+	}
+}
+
+render_clay_commands :: proc(renderer: ^Renderer, commands: []clay.RenderCommand) {
+	for cmd in commands {
 		switch cmd.commandType {
 		case .None:
 		case .Rectangle:
-			rect := cmd.renderData.rectangle
-			color := clay_color_to_rl_color(rect.backgroundColor)
-			rec := bb_to_rl_rec(cmd.boundingBox)
-			min_dim := min(cmd.boundingBox.width, cmd.boundingBox.height)
-			if rect.cornerRadius.topLeft > 0 && min_dim > 0 {
-				roundness := (rect.cornerRadius.topLeft * 2.0) / min_dim
-				rl.DrawRectangleRounded(rec, roundness, CORNER_ROUND_SEGMENTS, color)
-			} else {
-				rl.DrawRectangleRec(rec, color)
-			}
+			draw_clay_rectangle(renderer, cmd.boundingBox, cmd.renderData.rectangle)
 		case .Border:
-			draw_clay_border(cmd.boundingBox, cmd.renderData.border)
+			draw_clay_border(renderer, cmd.boundingBox, cmd.renderData.border)
+		case .Text:
+			draw_clay_text(renderer, cmd.boundingBox, cmd.renderData.text)
 		case .ScissorStart:
 			rl.BeginScissorMode(
 				i32(cmd.boundingBox.x),
@@ -97,24 +159,12 @@ render_clay_commands :: proc(render_commands: ^clay.ClayArray(clay.RenderCommand
 			)
 		case .ScissorEnd:
 			rl.EndScissorMode()
-		case .Text:
-			text_data := cmd.renderData.text
-			text_str := string(text_data.stringContents.chars[:text_data.stringContents.length])
-			c_str := strings.clone_to_cstring(text_str, context.temp_allocator)
-			font := rl.GetFontDefault()
-			font_size := f32(text_data.fontSize) if text_data.fontSize > 0 else DEFAULT_FONT_SIZE
-			spacing := f32(text_data.letterSpacing)
-			color := clay_color_to_rl_color(text_data.textColor)
-			rl.DrawTextEx(
-				font,
-				c_str,
-				{cmd.boundingBox.x, cmd.boundingBox.y},
-				font_size,
-				spacing,
-				color,
-			)
-		case .Image, .OverlayColorStart, .OverlayColorEnd, .Custom:
-		// Unused render commands
+		case .Image:
+			warn_renderer_limitation(renderer, .Image)
+		case .OverlayColorStart, .OverlayColorEnd:
+			warn_renderer_limitation(renderer, .Overlay)
+		case .Custom:
+			warn_renderer_limitation(renderer, .Custom)
 		}
 	}
 }

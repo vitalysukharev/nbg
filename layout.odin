@@ -1,124 +1,126 @@
 package main
 
-FactoriesLayoutOptions :: struct {
-	tile_x_count:     int,
-	tile_y_count:     int,
-	disc_cols:        int,
-	disc_rows:        int,
-	factories_number: int,
+Factory_Layout :: struct {
+	tile_x_count: int,
+	tile_y_count: int,
+	disc_cols:    int,
+	disc_rows:    int,
 }
 
-PlayerBoardLayoutOptions :: struct {
-	wall_dimension:        int,
-	pattern_line_max_size: int,
-	floor_size:            int,
-	areas_gap_in_tiles:    f32,
-	is_minified:           bool,
+Player_Board_Mode :: enum {
+	Regular,
+	Compact,
 }
 
-get_player_board_dimensions :: proc(plo: PlayerBoardLayoutOptions) -> (width_in_tiles, height_in_tiles: f32) {
-	upper_w := f32(plo.pattern_line_max_size + plo.wall_dimension) + plo.areas_gap_in_tiles
-	width_in_tiles = max(upper_w, f32(plo.floor_size))
-	height_in_tiles = f32(plo.wall_dimension) + plo.areas_gap_in_tiles + 1
+// Layout choices shared by sizing and UI construction.
+Board_Layout :: struct {
+	player_count:   int,
+	is_horizontal:  bool,
+	tile_size:      f32,
+	factories:      Factory_Layout,
+	opponent_board: Player_Board_Mode,
+	local_board:    Player_Board_Mode,
+}
+
+get_player_board_dimensions :: proc(
+	board: Player_Board_Mode,
+) -> (
+	width_in_tiles, height_in_tiles: f32,
+) {
+	pattern_width := 1 if board == .Compact else WALL_DIMENSION
+	upper_w := f32(pattern_width + WALL_DIMENSION) + AREAS_GAP_IN_TILES
+	width_in_tiles = max(upper_w, FLOOR_SIZE)
+	height_in_tiles = WALL_DIMENSION + AREAS_GAP_IN_TILES + 1
 	return
 }
 
-get_factories_dimensions :: proc(flo: FactoriesLayoutOptions) -> (width_in_tiles, height_in_tiles: f32) {
-	width_in_tiles = f32(flo.disc_cols * flo.tile_x_count)
-	height_in_tiles = f32(flo.disc_rows * flo.tile_y_count)
+get_factory_layout :: proc(
+	is_horizontal: bool,
+	player_count: int,
+) -> Factory_Layout {
+	factory_count := 2 * player_count + 2
+	disc_cols := 2 if player_count >= 3 else 1
+	result := Factory_Layout {
+		tile_x_count = 3,
+		tile_y_count = 2,
+		disc_cols    = disc_cols,
+		disc_rows    = factory_count / disc_cols,
+	}
+	// Portrait uses the transpose of the landscape grid.
+	if !is_horizontal {
+		result.tile_x_count, result.tile_y_count = result.tile_y_count, result.tile_x_count
+		result.disc_cols, result.disc_rows = result.disc_rows, result.disc_cols
+	}
+	return result
+}
+
+// Dimensions are in tiles by default; pass a tile size to obtain pixels.
+get_factory_disc_dimensions :: proc(
+	factories: Factory_Layout,
+	tile_size: f32 = 1,
+) -> (
+	width, height: f32,
+) {
+	width =
+		(f32(factories.tile_x_count) + 2 * FACTORY_PADDING_IN_TILES +
+		f32(factories.tile_x_count - 1) * FACTORY_TILE_GAP_IN_TILES) * tile_size
+	height =
+		(f32(factories.tile_y_count) + 2 * FACTORY_PADDING_IN_TILES +
+		f32(factories.tile_y_count - 1) * FACTORY_TILE_GAP_IN_TILES) * tile_size
 	return
 }
 
-get_factories_layout_options :: proc(width, height: f32, player_count: int) -> FactoriesLayoutOptions {
-	factories_count := 2 * player_count + 2
-	if width >= height {
-		disc_cols := 2 if player_count >= 3 else 1
-		return FactoriesLayoutOptions{
-			tile_x_count     = 3,
-			tile_y_count     = 2,
-			disc_cols        = disc_cols,
-			disc_rows        = factories_count / disc_cols,
-			factories_number = factories_count,
+get_factories_dimensions :: proc(
+	factories: Factory_Layout,
+	tile_size: f32 = 1,
+) -> (
+	width, height: f32,
+) {
+	disc_w, disc_h := get_factory_disc_dimensions(factories, tile_size)
+	width = f32(factories.disc_cols) * disc_w + f32(factories.disc_cols - 1) * FACTORY_GAP_IN_TILES * tile_size
+	height = f32(factories.disc_rows) * disc_h + f32(factories.disc_rows - 1) * FACTORY_GAP_IN_TILES * tile_size
+	return
+}
+
+calculate_board_layout :: proc(viewport_width, viewport_height: f32, player_count: int) -> Board_Layout {
+	assert(player_count >= MIN_PLAYER_COUNT && player_count <= MAX_PLAYER_COUNT)
+	width, height := max(viewport_width, 0), max(viewport_height, 0)
+	is_horizontal := width >= height
+	factories := get_factory_layout(is_horizontal, player_count)
+	board_w, board_h := get_player_board_dimensions(.Regular)
+	compact_w, _ := get_player_board_dimensions(.Compact)
+	factory_units_w, factory_units_h := get_factories_dimensions(factories)
+	gap := f32(AREAS_GAP_IN_TILES)
+	result := Board_Layout {
+		player_count   = player_count,
+		is_horizontal  = is_horizontal,
+		factories      = factories,
+		opponent_board = .Regular,
+		local_board    = .Regular,
+	}
+
+	width_limit, height_limit: f32
+	if result.is_horizontal {
+		players_h := 2 * board_h + gap if player_count >= 3 else board_h
+		height_limit = height / max(players_h, factory_units_h)
+		width_limit = width / (2 * board_w + 2 * gap + factory_units_w)
+		if width_limit < height_limit {
+			result.opponent_board = .Compact
+			result.local_board = .Compact
+			width_limit = width / (2 * compact_w + 2 * gap + factory_units_w)
 		}
 	} else {
-		disc_rows := 2 if player_count >= 3 else 1
-		return FactoriesLayoutOptions{
-			tile_x_count     = 2,
-			tile_y_count     = 3,
-			disc_cols        = factories_count / disc_rows,
-			disc_rows        = disc_rows,
-			factories_number = factories_count,
+		players_w := board_w
+		if player_count >= 3 {
+			result.opponent_board = .Compact
+			players_w = max(board_w, 2 * compact_w + gap)
 		}
-	}
-}
-
-get_player_board_layout_options :: proc(is_minified: bool) -> PlayerBoardLayoutOptions {
-	return PlayerBoardLayoutOptions{
-		wall_dimension        = WALL_DIMENSION,
-		floor_size            = FLOOR_SIZE,
-		areas_gap_in_tiles    = AREAS_GAP_IN_TILES,
-		is_minified           = is_minified,
-		pattern_line_max_size = 1 if is_minified else WALL_DIMENSION,
-	}
-}
-
-is_horizontal_layout_minified :: proc(width, height: f32, player_count: int) -> bool {
-	flo := get_factories_layout_options(width, height, player_count)
-	plo_reg := get_player_board_layout_options(false)
-
-	board_w, board_h := get_player_board_dimensions(plo_reg)
-	factories_w, factories_h := get_factories_dimensions(flo)
-
-	total_units_w_reg := (2 * board_w) + (2 * plo_reg.areas_gap_in_tiles) + factories_w
-	players_col_h := f32(2) * board_h + plo_reg.areas_gap_in_tiles if player_count >= 3 else board_h
-	total_units_h := max(factories_h, players_col_h)
-
-	// If width does not allow regular layout without shrinking below the height-constrained max tile size
-	return width / total_units_w_reg < height / total_units_h
-}
-
-get_tile_max_size :: proc(width, height: f32, player_count: int) -> f32 {
-	flo := get_factories_layout_options(width, height, player_count)
-	plo_reg := get_player_board_layout_options(false)
-	plo_min := get_player_board_layout_options(true)
-
-	reg_board_w, board_h := get_player_board_dimensions(plo_reg)
-	min_board_w, _ := get_player_board_dimensions(plo_min)
-	factories_w, factories_h := get_factories_dimensions(flo)
-	gap := plo_reg.areas_gap_in_tiles
-
-	if width >= height {
-		// Horizontal Layout: [Left Opponents] [Gap] [Factories Column] [Gap] [Right Players]
-		is_minified := is_horizontal_layout_minified(width, height, player_count)
-		board_w := min_board_w if is_minified else reg_board_w
-
-		total_units_w := (2 * board_w) + (2 * gap) + factories_w
-		players_col_h := f32(2) * board_h + gap if player_count >= 3 else board_h
-		total_units_h := max(factories_h, players_col_h)
-
-		return min(width / total_units_w, height / total_units_h)
-	} else {
-		// Vertical Layout: [Top Opponents] / [Gap] / [Factories Row] / [Gap] / [Bottom Players]
-		top_w, bottom_w: f32
-
-		switch player_count {
-		case 2:
-			top_w = reg_board_w
-			bottom_w = reg_board_w
-		case 3:
-			top_w = (2 * min_board_w) + gap
-			bottom_w = reg_board_w
-		case 4:
-			top_w = (2 * min_board_w) + gap
-			bottom_w = (2 * min_board_w) + gap
-		case:
-			top_w = reg_board_w
-			bottom_w = reg_board_w
+		if player_count == 4 {
+			result.local_board = .Compact
 		}
-
-		total_units_w := max(factories_w, top_w, bottom_w)
-		total_units_h := (2 * board_h) + (2 * gap) + factories_h
-
-		return min(width / total_units_w, height / total_units_h)
+		width_limit = width / max(players_w, factory_units_w)
+		height_limit = height / (2 * board_h + 2 * gap + factory_units_h)
 	}
+	result.tile_size = max(0, min(width_limit, height_limit))
+	return result
 }

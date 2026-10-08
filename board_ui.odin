@@ -1,500 +1,361 @@
 package main
- 
+
 import "clay"
 
-// Reusable spacing elements between layout containers
-ui_gap_x :: proc(width: f32) {
-	clay.Element(
-		{
-			layout = {
-				sizing = {
-					width = clay.SizingFixed(width),
-					height = clay.SizingGrow(),
-				},
-			},
-		},
-	)
+// Keep gaps in floating-point pixels, matching the layout calculations.
+ui_gap :: proc(size: f32, direction: clay.LayoutDirection) {
+	clay.Element({layout = {sizing = {
+		width = clay.SizingFixed(size) if direction == .LeftToRight else clay.SizingGrow(),
+		height = clay.SizingFixed(size) if direction == .TopToBottom else clay.SizingGrow(),
+	}}})
 }
 
-ui_gap_y :: proc(height: f32) {
-	clay.Element(
-		{
-			layout = {
-				sizing = {
-					width = clay.SizingGrow(),
-					height = clay.SizingFixed(height),
-				},
-			},
-		},
-	)
-}
-
-render_player_board :: proc(player_idx: u32, plo: PlayerBoardLayoutOptions, tile_size: f32) {
-	board_w_units, board_h_units := get_player_board_dimensions(plo)
+render_player_board :: proc(player_idx: u32, board: Player_Board_Mode, tile_size: f32) {
+	board_w_units, board_h_units := get_player_board_dimensions(board)
 	board_w := board_w_units * tile_size
 	board_h := board_h_units * tile_size
 
-	clay.Begin(
-		{
-			id = clay.ID_LOCAL("PlayerBoard", player_idx),
-			layout = {
-				layoutDirection = .TopToBottom,
-				sizing = {width = clay.SizingFixed(board_w), height = clay.SizingFixed(board_h)},
-			},
-			backgroundColor = COLOR_BG_PLAYER_BOARD,
+	// Player identity stays stable when its group or orientation changes.
+	clay.Begin({
+		id = clay.ID("PlayerBoard", player_idx),
+		layout = {
+			layoutDirection = .TopToBottom,
+			sizing = {width = clay.SizingFixed(board_w), height = clay.SizingFixed(board_h)},
 		},
-	)
+		backgroundColor = COLOR_BG_PLAYER_BOARD,
+	})
 	defer clay.End()
 
-	// Upper part: Pattern Lines on left, Wall on right
-	clay.Begin(
-		{
+	// Pattern lines and wall share the upper area above the floor.
+	{
+		clay.Begin({
 			id = clay.ID_LOCAL("UpperArea"),
 			layout = {
 				layoutDirection = .LeftToRight,
 				sizing = {
 					width = clay.SizingGrow(),
-					height = clay.SizingFixed(f32(plo.wall_dimension) * tile_size),
+					height = clay.SizingFixed(f32(WALL_DIMENSION) * tile_size),
 				},
 			},
-		},
-	)
-	{
-		// 1. Pattern Lines (Minified: 1 column of 5 tiles with count text; Regular: Triangle 1..5)
-		if plo.is_minified {
-			clay.Begin(
-				{
-					id = clay.ID_LOCAL("Board"),
-					layout = {
-						layoutDirection = .TopToBottom,
-						sizing = {
-							width = clay.SizingFixed(tile_size),
-							height = clay.SizingGrow(),
-						},
-					},
-				},
-			)
-			for row in 0 ..< plo.wall_dimension {
-				clay.Begin(
-					{
-						id = clay.ID_LOCAL("MinRow", u32(row)),
-						layout = {
-							sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
-							childAlignment = {x = .Center, y = .Center},
-						},
-						backgroundColor = COLOR_BG_PATTERN_SLOT,
-						cornerRadius = CORNER_RADIUS_TILE,
-					},
-				)
-				font_size := u16(max(tile_size * PATTERN_COUNT_FONT_RATIO, MIN_PATTERN_COUNT_FONT_SIZE))
-				clay.Text(
-					PATTERN_LINE_LABELS[row],
-					{
-						fontSize = font_size,
-						textColor = COLOR_TEXT_PATTERN_COUNT,
-					},
-				)
-				clay.End()
-			}
-			clay.End()
-		} else {
-			clay.Begin(
-				{
-					id = clay.ID_LOCAL("Board"),
-					layout = {
-						layoutDirection = .TopToBottom,
-						sizing = {
-							width = clay.SizingFixed(f32(plo.pattern_line_max_size) * tile_size),
-							height = clay.SizingGrow(),
-						},
-					},
-				},
-			)
-			for row in 0 ..< plo.pattern_line_max_size {
-				clay.Begin(
-					{
-						id = clay.ID_LOCAL("Row", u32(row)),
-						layout = {
-							layoutDirection = .LeftToRight,
-							sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
-						},
-					},
-				)
-				for col in 0 ..< plo.pattern_line_max_size {
-					if col < (plo.pattern_line_max_size - 1) - row {
-						// Empty spacer on the left
-						clay.Element(
-							{
-								layout = {
-									sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
-								},
-							},
-						)
-					} else {
-						// Active pattern line slot
-						clay.Element(
-							{
-								id = clay.ID_LOCAL("Col", u32(col)),
-								layout = {
-									sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
-								},
-								backgroundColor = COLOR_BG_PATTERN_SLOT,
-								cornerRadius = CORNER_RADIUS_TILE,
-							},
-						)
-					}
-				}
-				clay.End()
-			}
-			clay.End()
-		}
+		})
+		defer clay.End()
 
-		// Gap between pattern lines and wall
-		clay.Element(
-			{
-				layout = {
-					sizing = {
-						width = clay.SizingFixed(plo.areas_gap_in_tiles * tile_size),
-						height = clay.SizingGrow(),
-					},
-				},
-			},
-		)
-
-		// 2. Wall (5x5 grid with cyclic diagonal colors)
-		clay.Begin(
-			{
-				id = clay.ID_LOCAL("Wall"),
-				layout = {
-					layoutDirection = .TopToBottom,
-					sizing = {
-						width = clay.SizingFixed(f32(plo.wall_dimension) * tile_size),
-						height = clay.SizingGrow(),
-					},
-				},
-			},
-		)
-		for row in 0 ..< plo.wall_dimension {
-			clay.Begin(
-				{
-					id = clay.ID_LOCAL("Row", u32(row)),
-					layout = {
-						layoutDirection = .LeftToRight,
-						sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
-					},
-				},
-			)
-			for col in 0 ..< plo.wall_dimension {
-				color_idx := (col - row + plo.wall_dimension) % plo.wall_dimension
-				clay.Element(
-					{
-						id = clay.ID_LOCAL("Col", u32(col)),
-						layout = {
-							sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
-						},
-						backgroundColor = WALL_COLORS[color_idx],
-						cornerRadius = CORNER_RADIUS_TILE,
-					},
-				)
-			}
-			clay.End()
-		}
-		clay.End()
+		render_pattern_lines(board, tile_size)
+		ui_gap(AREAS_GAP_IN_TILES * tile_size, .LeftToRight)
+		render_wall(tile_size)
 	}
-	clay.End()
 
-	// Gap between pattern lines and floor
-	clay.Element(
-		{
-			layout = {
-				sizing = {
-					width = clay.SizingGrow(),
-					height = clay.SizingFixed(plo.areas_gap_in_tiles * tile_size),
-				},
+	ui_gap(AREAS_GAP_IN_TILES * tile_size, .TopToBottom)
+
+	render_floor(tile_size)
+}
+
+render_pattern_lines :: proc(board: Player_Board_Mode, tile_size: f32) {
+	column_count := 1 if board == .Compact else WALL_DIMENSION
+	clay.Begin({
+		id = clay.ID_LOCAL("Board"),
+		layout = {
+			layoutDirection = .TopToBottom,
+			sizing = {
+				width = clay.SizingFixed(f32(column_count) * tile_size),
+				height = clay.SizingGrow(),
 			},
 		},
-	)
+	})
+	defer clay.End()
 
-	// 3. Floor (7 penalty slots)
-	clay.Begin(
-		{
-			id = clay.ID_LOCAL("Floor"),
+	for row in 0 ..< WALL_DIMENSION {
+		if board == .Compact {
+			render_compact_pattern_line(row, tile_size)
+		} else {
+			render_regular_pattern_line(row)
+		}
+	}
+}
+
+render_compact_pattern_line :: proc(row: int, tile_size: f32) {
+	clay.Begin({
+		id = clay.ID_LOCAL("MinRow", u32(row)),
+		layout = {
+			sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+			childAlignment = {x = .Center, y = .Center},
+		},
+		backgroundColor = COLOR_BG_PATTERN_SLOT,
+		cornerRadius = CORNER_RADIUS_TILE,
+	})
+	defer clay.End()
+
+	font_size := u16(max(tile_size * PATTERN_COUNT_FONT_RATIO, MIN_PATTERN_COUNT_FONT_SIZE))
+	clay.Text(
+		PATTERN_LINE_LABELS[row],
+		{fontSize = font_size, textColor = COLOR_TEXT_PATTERN_COUNT},
+	)
+}
+
+render_regular_pattern_line :: proc(row: int) {
+	clay.Begin({
+		id = clay.ID_LOCAL("Row", u32(row)),
+		layout = {
+			layoutDirection = .LeftToRight,
+			sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+		},
+	})
+	defer clay.End()
+
+	for col in 0 ..< WALL_DIMENSION {
+		if col < WALL_DIMENSION - 1 - row {
+			clay.Element({layout = {
+				sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+			}})
+		} else {
+			render_board_slot(col, COLOR_BG_PATTERN_SLOT)
+		}
+	}
+}
+
+render_board_slot :: proc(col: int, color: clay.Color) {
+	clay.Element({
+		id = clay.ID_LOCAL("Col", u32(col)),
+		layout = {sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()}},
+		backgroundColor = color,
+		cornerRadius = CORNER_RADIUS_TILE,
+	})
+}
+
+render_wall :: proc(tile_size: f32) {
+	// Wall rows follow the cyclic diagonal color pattern.
+	clay.Begin({
+		id = clay.ID_LOCAL("Wall"),
+		layout = {
+			layoutDirection = .TopToBottom,
+			sizing = {
+				width = clay.SizingFixed(f32(WALL_DIMENSION) * tile_size),
+				height = clay.SizingGrow(),
+			},
+		},
+	})
+	defer clay.End()
+
+	for row in 0 ..< WALL_DIMENSION {
+		clay.Begin({
+			id = clay.ID_LOCAL("Row", u32(row)),
+			layout = {
+				layoutDirection = .LeftToRight,
+				sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+			},
+		})
+		defer clay.End()
+
+		for col in 0 ..< WALL_DIMENSION {
+			color_idx := (col - row + WALL_DIMENSION) % WALL_DIMENSION
+			render_board_slot(col, WALL_COLORS[color_idx])
+		}
+	}
+}
+
+render_floor :: proc(tile_size: f32) {
+	clay.Begin({
+		id = clay.ID_LOCAL("Floor"),
+		layout = {
+			layoutDirection = .LeftToRight,
+			sizing = {
+				width = clay.SizingFixed(f32(FLOOR_SIZE) * tile_size),
+				height = clay.SizingFixed(tile_size),
+			},
+		},
+	})
+	defer clay.End()
+
+	for col in 0 ..< FLOOR_SIZE {
+		render_board_slot(col, COLOR_BG_FLOOR_SLOT)
+	}
+}
+
+render_factory_disc :: proc(disc_idx: int, factories: Factory_Layout, tile_size: f32) {
+	disc_w, disc_h := get_factory_disc_dimensions(factories, tile_size)
+	clay.Begin({
+		id = clay.ID("Factory", u32(disc_idx)),
+		layout = {
+			layoutDirection = .TopToBottom,
+			sizing = {width = clay.SizingFixed(disc_w), height = clay.SizingFixed(disc_h)},
+			childAlignment = {x = .Center, y = .Center},
+		},
+		backgroundColor = COLOR_BG_FACTORY_DISC,
+		cornerRadius = CORNER_RADIUS_FACTORY,
+	})
+	defer clay.End()
+
+	for row in 0 ..< factories.tile_y_count {
+		if row > 0 {
+			ui_gap(FACTORY_TILE_GAP_IN_TILES * tile_size, .TopToBottom)
+		}
+		clay.Begin({
+			id = clay.ID_LOCAL("Row", u32(row)),
 			layout = {
 				layoutDirection = .LeftToRight,
 				sizing = {
-					width = clay.SizingFixed(f32(plo.floor_size) * tile_size),
+					width = clay.SizingFixed(disc_w - 2 * FACTORY_PADDING_IN_TILES * tile_size),
 					height = clay.SizingFixed(tile_size),
 				},
 			},
-		},
-	)
-	for col in 0 ..< plo.floor_size {
-		clay.Element(
-			{
-				id = clay.ID_LOCAL("Col", u32(col)),
-				layout = {sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()}},
-				backgroundColor = COLOR_BG_FLOOR_SLOT,
-				cornerRadius = CORNER_RADIUS_TILE,
-			},
-		)
-	}
-	clay.End()
-}
+		})
+		defer clay.End()
 
-render_factory_disc :: proc(disc_idx: int, flo: FactoriesLayoutOptions, tile_size: f32) {
-	clay.Begin(
-		{
-			id = clay.ID_LOCAL("Factory", u32(disc_idx)),
-			layout = {
-				layoutDirection = .TopToBottom,
-				sizing = {
-					width = clay.SizingGrow(),
-					height = clay.SizingGrow(),
-				},
-				padding = {
-					left = FACTORY_PADDING,
-					right = FACTORY_PADDING,
-					top = FACTORY_PADDING,
-					bottom = FACTORY_PADDING,
-				},
-				childGap = FACTORY_TILE_GAP,
-			},
-			backgroundColor = COLOR_BG_FACTORY_DISC,
-			cornerRadius = CORNER_RADIUS_FACTORY,
-		},
-	)
-	defer clay.End()
-
-	for row in 0 ..< flo.tile_y_count {
-		clay.Begin(
-			{
-				id = clay.ID_LOCAL("Row", u32(row)),
+		for col in 0 ..< factories.tile_x_count {
+			if col > 0 {
+				ui_gap(FACTORY_TILE_GAP_IN_TILES * tile_size, .LeftToRight)
+			}
+			tile_idx := (disc_idx * factories.tile_y_count + row) * factories.tile_x_count + col
+			clay.Element({
+				id = clay.ID("FactoryTile", u32(tile_idx)),
 				layout = {
-					layoutDirection = .LeftToRight,
-					sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
-					childGap = FACTORY_TILE_GAP,
-				},
-			},
-		)
-		for col in 0 ..< flo.tile_x_count {
-			clay.Element(
-				{
-					id = clay.ID_LOCAL("Col", u32(col)),
-					layout = {
-						sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+					sizing = {
+						width = clay.SizingFixed(tile_size),
+						height = clay.SizingFixed(tile_size),
 					},
-					backgroundColor = {
-						f32(40 + (disc_idx * 35) % 200),
-						f32(60 + (row * 60) % 180),
-						f32(80 + (col * 100) % 160),
-						255,
-					},
-					cornerRadius = CORNER_RADIUS_TILE,
 				},
-			)
+				backgroundColor = factory_tile_color(disc_idx, row, col),
+				cornerRadius = CORNER_RADIUS_TILE,
+			})
 		}
-		clay.End()
 	}
 }
 
-render_factories :: proc(is_horizontal: bool, tile_size: f32, flo: FactoriesLayoutOptions) {
-	factories_w_units, factories_h_units := get_factories_dimensions(flo)
-	total_w := factories_w_units * tile_size
-	total_h := factories_h_units * tile_size
+render_factories :: proc(is_horizontal: bool, tile_size: f32, factories: Factory_Layout) {
+	total_w, total_h := get_factories_dimensions(factories, tile_size)
+	outer_direction: clay.LayoutDirection = .LeftToRight if is_horizontal else .TopToBottom
+	inner_direction: clay.LayoutDirection = .TopToBottom if is_horizontal else .LeftToRight
+	line_count := factories.disc_cols if is_horizontal else factories.disc_rows
+	line_length := factories.disc_rows if is_horizontal else factories.disc_cols
+	line_id := "DiscCol" if is_horizontal else "DiscRow"
+	gap := FACTORY_GAP_IN_TILES * tile_size
 
-	clay.Begin(
-		{
-			id = clay.ID("CenterPart"),
-			layout = {
-				layoutDirection = .LeftToRight if is_horizontal else .TopToBottom,
-				sizing = {
-					width = clay.SizingFixed(total_w) if is_horizontal else clay.SizingGrow(),
-					height = clay.SizingGrow() if is_horizontal else clay.SizingFixed(total_h),
-				},
-				childAlignment = {x = .Center, y = .Center},
-				childGap = FACTORY_GAP,
+	clay.Begin({
+		id = clay.ID("CenterPart"),
+		layout = {
+			layoutDirection = outer_direction,
+			sizing = {
+				width = clay.SizingFixed(total_w) if is_horizontal else clay.SizingGrow(),
+				height = clay.SizingGrow() if is_horizontal else clay.SizingFixed(total_h),
 			},
-			backgroundColor = COLOR_BG_FACTORY_AREA,
+			childAlignment = {x = .Center, y = .Center},
 		},
-	)
+		backgroundColor = COLOR_BG_FACTORY_AREA,
+	})
 	defer clay.End()
 
-	if is_horizontal {
-		// Columns of factory discs
-		for col in 0 ..< flo.disc_cols {
-			clay.Begin(
-				{
-					id = clay.ID_LOCAL("DiscCol", u32(col)),
-					layout = {
-						layoutDirection = .TopToBottom,
-						sizing = {
-							width = clay.SizingGrow(),
-							height = clay.SizingFixed(total_h),
-						},
-						childAlignment = {x = .Center, y = .Center},
-						childGap = FACTORY_GAP,
-					},
-				},
-			)
-			for row in 0 ..< flo.disc_rows {
-				disc_idx := col * flo.disc_rows + row
-				render_factory_disc(disc_idx, flo, tile_size)
-			}
-			clay.End()
+	for line in 0 ..< line_count {
+		if line > 0 {
+			ui_gap(gap, outer_direction)
 		}
-	} else {
-		// Rows of factory discs
-		for row in 0 ..< flo.disc_rows {
-			clay.Begin(
-				{
-					id = clay.ID_LOCAL("DiscRow", u32(row)),
-					layout = {
-						layoutDirection = .LeftToRight,
-						sizing = {
-							width = clay.SizingFixed(total_w),
-							height = clay.SizingGrow(),
-						},
-						childAlignment = {x = .Center, y = .Center},
-						childGap = FACTORY_GAP,
-					},
-				},
-			)
-			for col in 0 ..< flo.disc_cols {
-				disc_idx := row * flo.disc_cols + col
-				render_factory_disc(disc_idx, flo, tile_size)
+		clay.Begin({
+			id = clay.ID_LOCAL(line_id, u32(line)),
+			layout = {
+				layoutDirection = inner_direction,
+				sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+				childAlignment = {x = .Center, y = .Center},
+			},
+		})
+		defer clay.End()
+
+		for cell in 0 ..< line_length {
+			if cell > 0 {
+				ui_gap(gap, inner_direction)
 			}
-			clay.End()
+			render_factory_cell(line * line_length + cell, factories, tile_size)
 		}
 	}
 }
 
-create_layout :: proc(width, height, delta_time: f32, player_count: int) -> clay.ClayArray(clay.RenderCommand) {
-	is_horizontal := width >= height
-	tile_size := get_tile_max_size(width, height, player_count)
-	flo := get_factories_layout_options(width, height, player_count)
+// Equal growing cells distribute the discs across the available central area.
+render_factory_cell :: proc(disc_idx: int, factories: Factory_Layout, tile_size: f32) {
+	clay.Begin({layout = {
+		sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+		childAlignment = {x = .Center, y = .Center},
+	}})
+	defer clay.End()
+
+	render_factory_disc(disc_idx, factories, tile_size)
+}
+
+render_player_group :: proc(
+	id: string,
+	players: []u32,
+	board: Player_Board_Mode,
+	tile_size: f32,
+	direction: clay.LayoutDirection,
+	alignment: clay.ChildAlignment,
+) {
+	clay.Begin({
+		id = clay.ID(id),
+		layout = {
+			sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
+			layoutDirection = direction,
+			childAlignment = alignment,
+		},
+	})
+	defer clay.End()
+
+	for player, i in players {
+		if i > 0 {
+			ui_gap(AREAS_GAP_IN_TILES * tile_size, direction)
+		}
+		render_player_board(player, board, tile_size)
+	}
+}
+
+// The returned commands borrow Clay's arena and must be consumed before the next layout.
+create_layout :: proc(layout: Board_Layout, delta_time: f32) -> []clay.RenderCommand {
+	is_horizontal := layout.is_horizontal
+	tile_size := layout.tile_size
 	gap_size := AREAS_GAP_IN_TILES * tile_size
+	outer_direction: clay.LayoutDirection = .LeftToRight if is_horizontal else .TopToBottom
+	player_direction: clay.LayoutDirection = .TopToBottom if is_horizontal else .LeftToRight
+
+	// Player order is the same in either orientation: [1, 2] / factories / [3, 0].
+	opponents := [2]u32{1, 2}
+	local_players := [2]u32{3, 0}
+	opponent_count := min(layout.player_count - 1, 2)
+	local_start := 0 if layout.player_count == MAX_PLAYER_COUNT else 1
+	opponent_alignment: clay.ChildAlignment = {x = .Center, y = .Bottom}
+	local_alignment: clay.ChildAlignment = {x = .Center, y = .Top}
+	if is_horizontal {
+		opponent_alignment = {x = .Right, y = .Center}
+		local_alignment = {x = .Left, y = .Center}
+	}
 
 	clay.BeginLayout()
-	clay.Begin(
-		{
+	{
+		clay.Begin({
 			id = clay.ID("MainContainer"),
 			layout = {
 				sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
-				layoutDirection = .LeftToRight if is_horizontal else .TopToBottom,
+				layoutDirection = outer_direction,
 			},
 			backgroundColor = COLOR_BG_APP,
-		},
-	)
+		})
+		defer clay.End()
 
-	if is_horizontal {
-		is_minified := is_horizontal_layout_minified(width, height, player_count)
-		plo := get_player_board_layout_options(is_minified)
-
-		// Left column: Opponent players (aligned right towards center factories)
-		clay.Begin(
-			{
-				id = clay.ID("LeftPlayersContainer"),
-				layout = {
-					sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
-					layoutDirection = .TopToBottom,
-					childAlignment = {x = .Right, y = .Center},
-				},
-			},
+		render_player_group(
+			"LeftPlayersContainer" if is_horizontal else "TopPlayersContainer",
+			opponents[:opponent_count],
+			layout.opponent_board,
+			tile_size,
+			player_direction,
+			opponent_alignment,
 		)
-		if player_count == 2 {
-			render_player_board(1, plo, tile_size)
-		} else {
-			// 3 or 4 players: Player 1 (top) and Player 2 (bottom)
-			render_player_board(1, plo, tile_size)
-			ui_gap_y(gap_size)
-			render_player_board(2, plo, tile_size)
-		}
-		clay.End()
-
-		ui_gap_x(gap_size)
-
-		// Central factories (2-column layout for 3p/4p, 1-column for 2p)
-		render_factories(true, tile_size, flo)
-
-		ui_gap_x(gap_size)
-
-		// Right column: Player 0 and Player 3 (aligned left towards center factories)
-		clay.Begin(
-			{
-				id = clay.ID("RightPlayersContainer"),
-				layout = {
-					sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
-					layoutDirection = .TopToBottom,
-					childAlignment = {x = .Left, y = .Center},
-				},
-			},
+		ui_gap(gap_size, outer_direction)
+		render_factories(is_horizontal, tile_size, layout.factories)
+		ui_gap(gap_size, outer_direction)
+		render_player_group(
+			"RightPlayersContainer" if is_horizontal else "BottomPlayersContainer",
+			local_players[local_start:],
+			layout.local_board,
+			tile_size,
+			player_direction,
+			local_alignment,
 		)
-		if player_count == 4 {
-			render_player_board(3, plo, tile_size)
-			ui_gap_y(gap_size)
-			render_player_board(0, plo, tile_size)
-		} else {
-			render_player_board(0, plo, tile_size)
-		}
-		clay.End()
-	} else {
-		plo_reg := get_player_board_layout_options(false)
-		plo_min := get_player_board_layout_options(true)
-
-		// Top container: Opponents (aligned bottom towards center factories)
-		clay.Begin(
-			{
-				id = clay.ID("TopPlayersContainer"),
-				layout = {
-					sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
-					layoutDirection = .LeftToRight,
-					childAlignment = {x = .Center, y = .Bottom},
-				},
-			},
-		)
-		if player_count == 2 {
-			render_player_board(1, plo_reg, tile_size)
-		} else {
-			// 3 or 4 players: Player 1 (left) and Player 2 (right), minified
-			render_player_board(1, plo_min, tile_size)
-			ui_gap_x(gap_size)
-			render_player_board(2, plo_min, tile_size)
-		}
-		clay.End()
-
-		ui_gap_y(gap_size)
-
-		// Central factories (2-row layout for 3p/4p, 1-row for 2p)
-		render_factories(false, tile_size, flo)
-
-		ui_gap_y(gap_size)
-
-		// Bottom container: Player 0 and Player 3 (aligned top towards center factories)
-		clay.Begin(
-			{
-				id = clay.ID("BottomPlayersContainer"),
-				layout = {
-					sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
-					layoutDirection = .LeftToRight,
-					childAlignment = {x = .Center, y = .Top},
-				},
-			},
-		)
-		if player_count == 2 {
-			render_player_board(0, plo_reg, tile_size)
-		} else if player_count == 3 {
-			// 3 players: Player 0 is full layout at bottom
-			render_player_board(0, plo_reg, tile_size)
-		} else {
-			// 4 players: Player 3 (left) and Player 0 (right), minified
-			render_player_board(3, plo_min, tile_size)
-			ui_gap_x(gap_size)
-			render_player_board(0, plo_min, tile_size)
-		}
-		clay.End()
 	}
 
-	clay.End()
-
-	return clay.EndLayout(delta_time)
+	return clay.ToSlice(clay.EndLayout(delta_time))
 }
