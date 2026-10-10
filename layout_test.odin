@@ -127,15 +127,21 @@ expect_rendered_layout :: proc(
 	elements := make(map[u32]Layout_Test_Element)
 	defer delete(elements)
 	for player in 0 ..< layout.player_count {
-		elements[clay.ID("PlayerBoard", u32(player)).id] = {kind = .Player_Board}
+		elements[clay.ID("PlayerBoard", u32(player)).id] = {
+			kind = .Player_Board,
+		}
 	}
 	factory_count := 2 * layout.player_count + 2
-	tiles_per_disc := layout.factories.tile_x_count * layout.factories.tile_y_count
+	tiles_per_disc := layout.factories.tile_cols * layout.factories.tile_rows
 	for disc in 0 ..< factory_count {
-		elements[clay.ID("Factory", u32(disc)).id] = {kind = .Factory_Disc}
+		elements[clay.ID("Factory", u32(disc)).id] = {
+			kind = .Factory_Disc,
+		}
 		for tile in 0 ..< tiles_per_disc {
 			tile_idx := disc * tiles_per_disc + tile
-			elements[clay.ID("FactoryTile", u32(tile_idx)).id] = {kind = .Factory_Tile}
+			elements[clay.ID("FactoryTile", u32(tile_idx)).id] = {
+				kind = .Factory_Tile,
+			}
 		}
 	}
 
@@ -151,13 +157,17 @@ expect_rendered_layout :: proc(
 			bb.x + bb.width <= viewport[0] + 0.01 &&
 			bb.y + bb.height <= viewport[1] + 0.01,
 			"%v players in %v: command %v extends outside the viewport: %v",
-			layout.player_count, viewport, command.id, bb,
+			layout.player_count,
+			viewport,
+			command.id,
+			bb,
 		)
 		if command.commandType == .Text {
 			label := command.renderData.text.stringContents
 			testing.expect(
 				t,
-				string(label.chars[:label.length]) == PATTERN_LINE_LABELS[label_count % WALL_DIMENSION],
+				string(label.chars[:label.length]) ==
+				PATTERN_LINE_LABELS[label_count % WALL_DIMENSION],
 			)
 			label_count += 1
 		}
@@ -168,7 +178,10 @@ expect_rendered_layout :: proc(
 			t,
 			!element.seen,
 			"%v players in %v: duplicate %v rectangle with ID %v",
-			layout.player_count, viewport, element.kind, command.id,
+			layout.player_count,
+			viewport,
+			element.kind,
+			command.id,
 		) {continue}
 		element.seen = true
 		elements[command.id] = element
@@ -196,15 +209,15 @@ expect_rendered_layout :: proc(
 			t,
 			element.seen,
 			"%v players in %v: missing %v rectangle with ID %v",
-			layout.player_count, viewport, element.kind, id,
+			layout.player_count,
+			viewport,
+			element.kind,
+			id,
 		)
 	}
 	expect_player_board_layout(t, layout, boards[:board_count], label_count)
 	expect_factory_disc_spacing(t, layout, discs[:disc_count])
-	testing.expect(
-		t,
-		tile_count == factory_count * tiles_per_disc,
-	)
+	testing.expect(t, tile_count == factory_count * tiles_per_disc)
 }
 
 expect_player_board_layout :: proc(
@@ -237,10 +250,15 @@ expect_player_board_layout :: proc(
 	testing.expect_value(t, label_count, compact_count * WALL_DIMENSION)
 }
 
-expect_factory_disc_spacing :: proc(t: ^testing.T, layout: Board_Layout, discs: []clay.BoundingBox) {
+expect_factory_disc_spacing :: proc(
+	t: ^testing.T,
+	layout: Board_Layout,
+	discs: []clay.BoundingBox,
+) {
 	if !testing.expect_value(t, len(discs), 2 * layout.player_count + 2) {return}
 	// Disc centers form equally spaced rows and columns across the central area.
-	line_length := layout.factories.disc_rows if layout.is_horizontal else layout.factories.disc_cols
+	line_length :=
+		layout.factories.disc_rows if layout.is_horizontal else layout.factories.disc_cols
 	for i in 2 ..< len(discs) {
 		if i % line_length < 2 {continue}
 		a, b, c := discs[i - 2], discs[i - 1], discs[i]

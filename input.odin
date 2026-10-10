@@ -7,7 +7,12 @@ Pointer_Input :: struct {
 	held, pressed: bool,
 }
 
-poll_pointer_input :: proc(previous_touch_count: i32) -> (pointer: Pointer_Input, touch_count: i32) {
+poll_pointer_input :: proc(
+	previous_touch_count: i32,
+) -> (
+	pointer: Pointer_Input,
+	touch_count: i32,
+) {
 	touch_count = rl.GetTouchPointCount()
 	touch_position := rl.GetTouchPosition(0) if touch_count > 0 else rl.Vector2{}
 	pointer = read_pointer_input(
@@ -27,7 +32,11 @@ read_pointer_input :: proc(
 	touch_position: rl.Vector2,
 	touch_count, previous_touch_count: i32,
 ) -> Pointer_Input {
-	result := Pointer_Input{position = mouse_position, held = mouse_held, pressed = mouse_pressed}
+	result := Pointer_Input {
+		position = mouse_position,
+		held     = mouse_held,
+		pressed  = mouse_pressed,
+	}
 	if touch_count > 0 {
 		result.position = touch_position
 		result.held = true

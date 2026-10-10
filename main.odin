@@ -29,7 +29,10 @@ app_init :: proc(app: ^App) {
 	min_memory_size := clay.MinMemorySize()
 	app.clay_memory = make([]u8, min_memory_size)
 
-	arena := clay.CreateArenaWithCapacityAndMemory(c.size_t(min_memory_size), raw_data(app.clay_memory))
+	arena := clay.CreateArenaWithCapacityAndMemory(
+		c.size_t(min_memory_size),
+		raw_data(app.clay_memory),
+	)
 	clay.Initialize(
 		arena,
 		{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())},

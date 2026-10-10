@@ -6,6 +6,19 @@ import "core:fmt"
 import "core:strings"
 import rl "vendor:raylib"
 
+Renderer_Limitation :: enum {
+	Unequal_Corners,
+	Rounded_Borders,
+	Image,
+	Overlay,
+	Custom,
+	Font,
+}
+
+Renderer :: struct {
+	warned: bit_set[Renderer_Limitation],
+}
+
 clay_text_to_cstring :: proc(text: clay.StringSlice) -> cstring {
 	return strings.clone_to_cstring(string(text.chars[:text.length]), context.temp_allocator)
 }
@@ -35,16 +48,16 @@ clay_error_handler :: proc "c" (error_data: clay.ErrorData) {
 	)
 }
 
-clay_color_to_rl_color :: proc(c: clay.Color) -> rl.Color {
+clay_color_to_rl_color :: proc(color: clay.Color) -> rl.Color {
 	return rl.Color {
-		u8(clamp(c[0], 0, 255)),
-		u8(clamp(c[1], 0, 255)),
-		u8(clamp(c[2], 0, 255)),
-		u8(clamp(c[3], 0, 255)),
+		u8(clamp(color[0], 0, 255)),
+		u8(clamp(color[1], 0, 255)),
+		u8(clamp(color[2], 0, 255)),
+		u8(clamp(color[3], 0, 255)),
 	}
 }
 
-bb_to_rl_rec :: proc(bb: clay.BoundingBox) -> rl.Rectangle {
+clay_box_to_rl_rectangle :: proc(bb: clay.BoundingBox) -> rl.Rectangle {
 	return rl.Rectangle{bb.x, bb.y, bb.width, bb.height}
 }
 
@@ -60,47 +73,42 @@ draw_clay_rectangle :: proc(
 		warn_renderer_limitation(renderer, .Unequal_Corners)
 	}
 	color := clay_color_to_rl_color(rect.backgroundColor)
-	rec := bb_to_rl_rec(bb)
+	bounds := clay_box_to_rl_rectangle(bb)
 	min_dim := min(bb.width, bb.height)
 	if radii.topLeft > 0 && min_dim > 0 {
 		roundness := clamp((radii.topLeft * 2.0) / min_dim, 0, 1)
-		rl.DrawRectangleRounded(rec, roundness, CORNER_ROUND_SEGMENTS, color)
+		rl.DrawRectangleRounded(bounds, roundness, CORNER_ROUND_SEGMENTS, color)
 	} else {
-		rl.DrawRectangleRec(rec, color)
+		rl.DrawRectangleRec(bounds, color)
 	}
 }
 
-draw_clay_border :: proc(renderer: ^Renderer, bb: clay.BoundingBox, border: clay.BorderRenderData) {
+draw_clay_border :: proc(
+	renderer: ^Renderer,
+	bb: clay.BoundingBox,
+	border: clay.BorderRenderData,
+) {
 	radii := border.cornerRadius
-	if radii.topLeft > 0 ||
-	   radii.topRight > 0 ||
-	   radii.bottomLeft > 0 ||
-	   radii.bottomRight > 0 {
+	if radii.topLeft > 0 || radii.topRight > 0 || radii.bottomLeft > 0 || radii.bottomRight > 0 {
 		warn_renderer_limitation(renderer, .Rounded_Borders)
 	}
 	color := clay_color_to_rl_color(border.color)
-	if border.width.left > 0 {
-		rl.DrawRectangleRec({bb.x, bb.y, f32(border.width.left), bb.height}, color)
+	widths := border.width
+	sides := [4]struct {
+		thickness: u16,
+		bounds:    rl.Rectangle,
+	} {
+		{widths.left, {bb.x, bb.y, f32(widths.left), bb.height}},
+		{widths.right, {bb.x + bb.width - f32(widths.right), bb.y, f32(widths.right), bb.height}},
+		{widths.top, {bb.x, bb.y, bb.width, f32(widths.top)}},
+		{
+			widths.bottom,
+			{bb.x, bb.y + bb.height - f32(widths.bottom), bb.width, f32(widths.bottom)},
+		},
 	}
-	if border.width.right > 0 {
-		rl.DrawRectangleRec(
-			{bb.x + bb.width - f32(border.width.right), bb.y, f32(border.width.right), bb.height},
-			color,
-		)
-	}
-	if border.width.top > 0 {
-		rl.DrawRectangleRec({bb.x, bb.y, bb.width, f32(border.width.top)}, color)
-	}
-	if border.width.bottom > 0 {
-		rl.DrawRectangleRec(
-			{
-				bb.x,
-				bb.y + bb.height - f32(border.width.bottom),
-				bb.width,
-				f32(border.width.bottom),
-			},
-			color,
-		)
+	for side in sides {
+		if side.thickness == 0 {continue}
+		rl.DrawRectangleRec(side.bounds, color)
 	}
 }
 
@@ -119,18 +127,6 @@ draw_clay_text :: proc(renderer: ^Renderer, bb: clay.BoundingBox, text: clay.Tex
 }
 
 // Report each unsupported feature once in debug builds, without flooding each frame.
-Renderer_Limitation :: enum {
-	Unequal_Corners,
-	Rounded_Borders,
-	Image,
-	Overlay,
-	Custom,
-	Font,
-}
-Renderer :: struct {
-	warned: bit_set[Renderer_Limitation],
-}
-
 warn_renderer_limitation :: proc(renderer: ^Renderer, feature: Renderer_Limitation) {
 	when ODIN_DEBUG {
 		if feature not_in renderer.warned {
