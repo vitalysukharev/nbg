@@ -1,0 +1,8 @@
+{
+  "image": "example-player-board.webp",
+  "desktopImage": "example-player-board.png",
+  "width": 384,
+  "height": 256,
+  "origin": "top-left",
+  "border": 40
+}

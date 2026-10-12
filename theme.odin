@@ -3,13 +3,14 @@ package main
 import "clay"
 
 // --- Theme Colors ---
-COLOR_BG_APP :: clay.Color{18, 22, 30, 255} // Main application background
-COLOR_BG_PLAYER_BOARD :: clay.Color{48, 42, 60, 255} // Player board background
-COLOR_BG_PATTERN_SLOT :: clay.Color{68, 60, 82, 255} // Pattern line empty slot
-COLOR_BG_FLOOR_SLOT :: clay.Color{75, 52, 64, 255} // Penalty floor line slot
-COLOR_BG_FACTORY_AREA :: clay.Color{30, 136, 229, 255} // Factory container accent
+COLOR_BG_APP :: clay.Color{232, 210, 179, 255} // Light wood fallback
+COLOR_BG_PLAYER_BOARD :: clay.Color{222, 214, 190, 255} // Ivory board fallback
+COLOR_BG_PATTERN_SLOT :: clay.Color{74, 67, 54, 65} // Recess over the board texture
+COLOR_BG_FLOOR_SLOT :: clay.Color{138, 76, 61, 65} // Warm penalty row recess
+COLOR_BG_FACTORY_AREA :: clay.Color{18, 22, 30, 0} // Let individual trays define the area
 COLOR_BG_FACTORY_DISC :: clay.Color{45, 55, 72, 255} // Individual factory disc
-COLOR_TEXT_PATTERN_COUNT :: clay.Color{210, 215, 230, 255} // Text for minified pattern line count
+COLOR_TEXT_PATTERN_COUNT :: clay.Color{65, 63, 59, 255} // Ink on the ivory board
+COLOR_TEXT_FLOOR_PENALTY :: clay.Color{113, 54, 41, 255}
 
 // Wall Colors (Azul 5-tile standard cycle)
 @(rodata)
@@ -25,24 +26,23 @@ WALL_COLORS := [WALL_DIMENSION]clay.Color {
 @(rodata)
 PATTERN_LINE_LABELS := [WALL_DIMENSION]string{"1", "2", "3", "4", "5"}
 
-// Placeholder colors distinguish factory tiles from the board palette.
-factory_tile_color :: proc(disc_idx, row, col: int) -> clay.Color {
-	return {
-		f32(40 + (disc_idx * 35) % 200),
-		f32(60 + (row * 60) % 180),
-		f32(80 + (col * 100) % 160),
-		255,
-	}
-}
+@(rodata)
+FLOOR_PENALTY_LABELS := [FLOOR_SIZE]string{"−1", "−1", "−2", "−2", "−2", "−3", "−3"}
 
 // --- Geometry & Typography Metrics ---
 CORNER_RADIUS_TILE :: clay.CornerRadius{2, 2, 2, 2}
 CORNER_RADIUS_FACTORY :: clay.CornerRadius{4, 4, 4, 4}
 CORNER_ROUND_SEGMENTS :: 8
 AREAS_GAP_IN_TILES :: 0.5
+PLAYER_BOARD_PADDING_IN_TILES :: 1.6 // Keep slots clear of the frame and corner ornaments.
+FLOOR_LABEL_GAP_IN_TILES :: 0.1
+FLOOR_LABEL_HEIGHT_IN_TILES :: 0.7
 FACTORY_TILE_GAP_IN_TILES :: 0.1
 FACTORY_PADDING_IN_TILES :: 0.1
 FACTORY_GAP_IN_TILES :: 0.2
-DEFAULT_FONT_SIZE :: 10.0
-MIN_PATTERN_COUNT_FONT_SIZE :: 8.0
-PATTERN_COUNT_FONT_RATIO :: 0.45
+UI_FONT_PATH :: "assets/fonts/spectral-semibold.fnt"
+DEFAULT_FONT_SIZE :: 12.0
+MIN_PATTERN_COUNT_FONT_SIZE :: 11.0
+PATTERN_COUNT_FONT_RATIO :: 0.6
+MIN_FLOOR_PENALTY_FONT_SIZE :: 10.0
+FLOOR_PENALTY_FONT_RATIO :: 0.6

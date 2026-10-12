@@ -35,7 +35,10 @@ get_player_board_dimensions :: proc(
 	pattern_width := 1 if board == .Compact else WALL_DIMENSION
 	upper_w := f32(pattern_width + WALL_DIMENSION) + AREAS_GAP_IN_TILES
 	width_in_tiles = max(upper_w, FLOOR_SIZE)
-	height_in_tiles = WALL_DIMENSION + AREAS_GAP_IN_TILES + 1
+	height_in_tiles = WALL_DIMENSION + AREAS_GAP_IN_TILES +
+		1 + FLOOR_LABEL_GAP_IN_TILES + FLOOR_LABEL_HEIGHT_IN_TILES
+	width_in_tiles += 2 * PLAYER_BOARD_PADDING_IN_TILES
+	height_in_tiles += 2 * PLAYER_BOARD_PADDING_IN_TILES
 	return
 }
 

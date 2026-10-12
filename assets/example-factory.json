@@ -1,0 +1,8 @@
+{
+  "image": "example-factory.webp",
+  "desktopImage": "example-factory.png",
+  "width": 192,
+  "height": 128,
+  "origin": "top-left",
+  "border": 8
+}

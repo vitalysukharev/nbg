@@ -1,0 +1,15 @@
+{
+  "image": "example-tiles.webp",
+  "width": 640,
+  "height": 128,
+  "origin": "top-left",
+  "cellSize": 128,
+  "padding": 8,
+  "sprites": {
+    "blue": { "x": 8, "y": 8, "width": 112, "height": 112 },
+    "yellow": { "x": 136, "y": 8, "width": 112, "height": 112 },
+    "red": { "x": 264, "y": 8, "width": 112, "height": 112 },
+    "black": { "x": 392, "y": 8, "width": 112, "height": 112 },
+    "white": { "x": 520, "y": 8, "width": 112, "height": 112 }
+  }
+}

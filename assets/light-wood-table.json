@@ -1,0 +1,11 @@
+{
+  "image": "light-wood-table.webp",
+  "desktopImage": "light-wood-table.png",
+  "width": 512,
+  "height": 512,
+  "origin": "top-left",
+  "wrap": "repeat",
+  "scale": "one source pixel per display pixel",
+  "generatedWith": "built-in imagegen",
+  "prompt": "light-wood-table.prompt.txt"
+}

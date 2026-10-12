@@ -20,6 +20,7 @@ render_player_board :: proc(player_idx: u32, board: Player_Board_Mode, tile_size
 	board_w_units, board_h_units := get_player_board_dimensions(board)
 	board_w := board_w_units * tile_size
 	board_h := board_h_units * tile_size
+	padding := PLAYER_BOARD_PADDING_IN_TILES * tile_size
 
 	// Player identity stays stable when its group or orientation changes.
 	clay.Begin(
@@ -28,8 +29,24 @@ render_player_board :: proc(player_idx: u32, board: Player_Board_Mode, tile_size
 			layout = {
 				layoutDirection = .TopToBottom,
 				sizing = {width = clay.SizingFixed(board_w), height = clay.SizingFixed(board_h)},
+				childAlignment = {x = .Center, y = .Center},
 			},
-			backgroundColor = COLOR_BG_PLAYER_BOARD,
+			image = {imageData = rawptr(&PLAYER_BOARD_SPRITE)},
+		},
+	)
+	defer clay.End()
+
+	// Fixed-size content preserves floating-point padding on every side.
+	clay.Begin(
+		{
+			id = clay.ID("PlayerBoardContent", player_idx),
+			layout = {
+				layoutDirection = .TopToBottom,
+				sizing = {
+					width = clay.SizingFixed(board_w - 2 * padding),
+					height = clay.SizingFixed(board_h - 2 * padding),
+				},
+			},
 		},
 	)
 	defer clay.End()
@@ -127,13 +144,14 @@ render_regular_pattern_line :: proc(row: int, tile_size: f32) {
 	}
 }
 
-render_board_slot :: proc(col: int, color: clay.Color) {
+render_board_slot :: proc(col: int, color: clay.Color, sprite: ^UI_Sprite = nil) {
 	clay.Element(
 		{
 			id = clay.ID_LOCAL("Col", u32(col)),
 			layout = {sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()}},
-			backgroundColor = color,
+			backgroundColor = color if sprite == nil else clay.Color{},
 			cornerRadius = CORNER_RADIUS_TILE,
+			image = {imageData = rawptr(sprite)},
 		},
 	)
 }
@@ -168,28 +186,67 @@ render_wall :: proc(tile_size: f32) {
 
 		for col in 0 ..< WALL_DIMENSION {
 			color_idx := (col - row + WALL_DIMENSION) % WALL_DIMENSION
-			render_board_slot(col, WALL_COLORS[color_idx])
+			render_board_slot(col, WALL_COLORS[color_idx], &TILE_SPRITES[color_idx])
 		}
 	}
 }
 
 render_floor :: proc(tile_size: f32) {
+	label_height := FLOOR_LABEL_HEIGHT_IN_TILES * tile_size
+	label_gap := FLOOR_LABEL_GAP_IN_TILES * tile_size
 	clay.Begin(
 		{
 			id = clay.ID_LOCAL("Floor"),
 			layout = {
-				layoutDirection = .LeftToRight,
+				layoutDirection = .TopToBottom,
 				sizing = {
 					width = clay.SizingFixed(f32(FLOOR_SIZE) * tile_size),
-					height = clay.SizingFixed(tile_size),
+					height = clay.SizingFixed(tile_size + label_gap + label_height),
 				},
 			},
 		},
 	)
 	defer clay.End()
 
-	for col in 0 ..< FLOOR_SIZE {
-		render_board_slot(col, COLOR_BG_FLOOR_SLOT)
+	{
+		clay.Begin(
+			{
+				id = clay.ID_LOCAL("FloorSlots"),
+				layout = {
+					layoutDirection = .LeftToRight,
+					sizing = {width = clay.SizingGrow(), height = clay.SizingFixed(tile_size)},
+				},
+			},
+		)
+		defer clay.End()
+		for col in 0 ..< FLOOR_SIZE {
+			render_board_slot(col, COLOR_BG_FLOOR_SLOT)
+		}
+	}
+	ui_gap(label_gap, .TopToBottom)
+	clay.Begin(
+		{
+			id = clay.ID_LOCAL("FloorPenalties"),
+			layout = {
+				layoutDirection = .LeftToRight,
+				sizing = {width = clay.SizingGrow(), height = clay.SizingFixed(label_height)},
+			},
+		},
+	)
+	defer clay.End()
+	font_size := u16(max(tile_size * FLOOR_PENALTY_FONT_RATIO, MIN_FLOOR_PENALTY_FONT_SIZE))
+	for label, col in FLOOR_PENALTY_LABELS {
+		clay.Begin(
+			{
+				id = clay.ID_LOCAL("Penalty", u32(col)),
+				layout = {
+					sizing = {width = clay.SizingFixed(tile_size), height = clay.SizingGrow()},
+					childAlignment = {x = .Center, y = .Center},
+				},
+			},
+		)
+		defer clay.End()
+		clay.Text(label, {fontSize = font_size, textColor = COLOR_TEXT_FLOOR_PENALTY})
 	}
 }
 
@@ -203,8 +260,8 @@ render_factory_disc :: proc(disc_idx: int, factories: Factory_Layout, tile_size:
 				sizing = {width = clay.SizingFixed(disc_w), height = clay.SizingFixed(disc_h)},
 				childAlignment = {x = .Center, y = .Center},
 			},
-			backgroundColor = COLOR_BG_FACTORY_DISC,
 			cornerRadius = CORNER_RADIUS_FACTORY,
+			image = {imageData = rawptr(&FACTORY_SPRITE)},
 		},
 	)
 	defer clay.End()
@@ -234,6 +291,7 @@ render_factory_disc :: proc(disc_idx: int, factories: Factory_Layout, tile_size:
 				ui_gap(FACTORY_TILE_GAP_IN_TILES * tile_size, .LeftToRight)
 			}
 			tile_idx := (disc_idx * factories.tile_rows + row) * factories.tile_cols + col
+			color_idx := tile_idx % WALL_DIMENSION
 			clay.Element(
 				{
 					id = clay.ID("FactoryTile", u32(tile_idx)),
@@ -243,8 +301,8 @@ render_factory_disc :: proc(disc_idx: int, factories: Factory_Layout, tile_size:
 							height = clay.SizingFixed(tile_size),
 						},
 					},
-					backgroundColor = factory_tile_color(disc_idx, row, col),
 					cornerRadius = CORNER_RADIUS_TILE,
+					image = {imageData = rawptr(&TILE_SPRITES[color_idx])},
 				},
 			)
 		}
@@ -385,7 +443,7 @@ create_layout :: proc(layout: Board_Layout, delta_time: f32) -> []clay.RenderCom
 					sizing = {width = clay.SizingGrow(), height = clay.SizingGrow()},
 					layoutDirection = outer_direction,
 				},
-				backgroundColor = COLOR_BG_APP,
+				image = {imageData = rawptr(&TABLE_SPRITE)},
 			},
 		)
 		defer clay.End()

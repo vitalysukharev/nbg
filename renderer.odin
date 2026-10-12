@@ -1,3 +1,5 @@
+#+build !js
+
 package main
 
 import "base:runtime"
@@ -9,14 +11,58 @@ import rl "vendor:raylib"
 Renderer_Limitation :: enum {
 	Unequal_Corners,
 	Rounded_Borders,
-	Image,
 	Overlay,
 	Custom,
 	Font,
 }
 
 Renderer :: struct {
-	warned: bit_set[Renderer_Limitation],
+	warned:   bit_set[Renderer_Limitation],
+	textures: [Sprite_Kind]rl.Texture2D,
+	font:     rl.Font,
+}
+
+renderer_init :: proc(renderer: ^Renderer) {
+	font := rl.LoadFont(UI_FONT_PATH)
+	if rl.IsFontValid(font) && font.texture.id != 0 &&
+	   font.texture.id != rl.GetFontDefault().texture.id {
+		rl.SetTextureFilter(font.texture, .BILINEAR)
+		renderer.font = font
+	} else {
+		fmt.eprintfln("Could not load %s; using the default font.", UI_FONT_PATH)
+	}
+
+	for path, kind in SPRITE_TEXTURE_PATHS {
+		texture := rl.LoadTexture(path)
+		if !rl.IsTextureValid(texture) {
+			fmt.eprintfln("Could not load %s; using flat colors for %v.", path, kind)
+			continue
+		}
+		rl.SetTextureFilter(texture, .BILINEAR)
+		if kind == .Table {
+			rl.SetTextureWrap(texture, .REPEAT)
+		}
+		renderer.textures[kind] = texture
+	}
+}
+
+renderer_shutdown :: proc(renderer: ^Renderer) {
+	if renderer.font.texture.id != 0 {
+		rl.UnloadFont(renderer.font)
+	}
+	for texture in renderer.textures {
+		if texture.id != 0 {
+			rl.UnloadTexture(texture)
+		}
+	}
+	renderer^ = {}
+}
+
+renderer_font :: proc(renderer: ^Renderer) -> rl.Font {
+	if renderer != nil && renderer.font.texture.id != 0 {
+		return renderer.font
+	}
+	return rl.GetFontDefault()
 }
 
 clay_text_to_cstring :: proc(text: clay.StringSlice) -> cstring {
@@ -35,7 +81,12 @@ measure_clay_text :: proc "c" (
 	context = runtime.default_context()
 	font_size := clay_font_size(config.fontSize if config != nil else 0)
 	spacing := f32(config.letterSpacing) if config != nil else 0.0
-	size := rl.MeasureTextEx(rl.GetFontDefault(), clay_text_to_cstring(text), font_size, spacing)
+	size := rl.MeasureTextEx(
+		renderer_font(cast(^Renderer)user_data),
+		clay_text_to_cstring(text),
+		font_size,
+		spacing,
+	)
 	return {width = size.x, height = size.y}
 }
 
@@ -117,13 +168,82 @@ draw_clay_text :: proc(renderer: ^Renderer, bb: clay.BoundingBox, text: clay.Tex
 		warn_renderer_limitation(renderer, .Font)
 	}
 	rl.DrawTextEx(
-		rl.GetFontDefault(),
+		renderer_font(renderer),
 		clay_text_to_cstring(text.stringContents),
 		{bb.x, bb.y},
 		clay_font_size(text.fontSize),
 		f32(text.letterSpacing),
 		clay_color_to_rl_color(text.textColor),
 	)
+}
+
+draw_clay_image :: proc(renderer: ^Renderer, bb: clay.BoundingBox, data: clay.ImageRenderData) {
+	sprite := cast(^UI_Sprite)data.imageData
+	texture: rl.Texture2D
+	color := data.backgroundColor
+	if sprite != nil {
+		texture = renderer.textures[sprite.kind]
+		switch sprite.kind {
+		case .Tile:
+			color = WALL_COLORS[sprite.color_index]
+		case .Factory:
+			color = COLOR_BG_FACTORY_DISC
+		case .Player_Board:
+			color = COLOR_BG_PLAYER_BOARD
+		case .Table:
+			color = COLOR_BG_APP
+		}
+	}
+	if sprite == nil || texture.id == 0 {
+		draw_clay_rectangle(
+			renderer,
+			bb,
+			{backgroundColor = color, cornerRadius = data.cornerRadius},
+		)
+		return
+	}
+	if sprite.border > 0 {
+		draw_sprite_panel(texture, sprite, bb)
+		return
+	}
+	source := sprite.source
+	if sprite.kind == .Table {
+		// Repeat at a fixed pixel scale so resizing never stretches the wood grain.
+		source = {0, 0, bb.width, bb.height}
+	}
+	rl.DrawTexturePro(
+		texture,
+		{source.x, source.y, source.width, source.height},
+		clay_box_to_rl_rectangle(bb),
+		{0, 0},
+		0,
+		rl.WHITE,
+	)
+}
+
+draw_sprite_panel :: proc(texture: rl.Texture2D, sprite: ^UI_Sprite, bb: clay.BoundingBox) {
+	if bb.width <= 0 || bb.height <= 0 {return}
+	source := sprite.source
+	border := f32(sprite.border)
+	// Scale corners uniformly, then stretch only the edges and quiet center.
+	scale := min(bb.width / source.width, bb.height / source.height)
+	margin := min(border * scale, min(bb.width, bb.height) / 2)
+	sx := [4]f32{0, border, source.width - border, source.width}
+	sy := [4]f32{0, border, source.height - border, source.height}
+	dx := [4]f32{0, margin, bb.width - margin, bb.width}
+	dy := [4]f32{0, margin, bb.height - margin, bb.height}
+	for row in 0 ..< 3 {
+		for col in 0 ..< 3 {
+			rl.DrawTexturePro(
+				texture,
+				{source.x + sx[col], source.y + sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row]},
+				{bb.x + dx[col], bb.y + dy[row], dx[col + 1] - dx[col], dy[row + 1] - dy[row]},
+				{0, 0},
+				0,
+				rl.WHITE,
+			)
+		}
+	}
 }
 
 // Report each unsupported feature once in debug builds, without flooding each frame.
@@ -156,7 +276,7 @@ render_clay_commands :: proc(renderer: ^Renderer, commands: []clay.RenderCommand
 		case .ScissorEnd:
 			rl.EndScissorMode()
 		case .Image:
-			warn_renderer_limitation(renderer, .Image)
+			draw_clay_image(renderer, cmd.boundingBox, cmd.renderData.image)
 		case .OverlayColorStart, .OverlayColorEnd:
 			warn_renderer_limitation(renderer, .Overlay)
 		case .Custom:

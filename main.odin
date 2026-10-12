@@ -1,3 +1,5 @@
+#+build !js
+
 package main
 
 import "clay"
@@ -24,6 +26,7 @@ app_init :: proc(app: ^App) {
 	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT, .MSAA_4X_HINT})
 	rl.InitWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, WINDOW_TITLE)
 	rl.SetTargetFPS(TARGET_FPS)
+	renderer_init(&app.renderer)
 
 	// Initialize Clay layout engine arena
 	min_memory_size := clay.MinMemorySize()
@@ -38,7 +41,7 @@ app_init :: proc(app: ^App) {
 		{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())},
 		{handler = clay_error_handler},
 	)
-	clay.SetMeasureTextFunction(measure_clay_text, nil)
+	clay.SetMeasureTextFunction(measure_clay_text, &app.renderer)
 
 	app.player_count = MIN_PLAYER_COUNT
 }
@@ -46,6 +49,7 @@ app_init :: proc(app: ^App) {
 app_shutdown :: proc(app: ^App) {
 	clay.SetCurrentContext(nil)
 	delete(app.clay_memory)
+	renderer_shutdown(&app.renderer)
 	app^ = {}
 	rl.CloseWindow()
 }

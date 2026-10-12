@@ -7,6 +7,7 @@ import "clay"
 import "core:c"
 import "core:math"
 import "core:testing"
+import "core:unicode/utf8"
 
 Layout_Test_Element_Kind :: enum {
 	Player_Board,
@@ -87,7 +88,8 @@ test_measure_text :: proc "c" (
 	config: ^clay.TextElementConfig,
 	data: rawptr,
 ) -> clay.Dimensions {
-	return {f32(text.length) * f32(config.fontSize) * 0.5, f32(config.fontSize)}
+	runes := utf8.rune_count_in_bytes(transmute([]u8)string(text.chars[:text.length]))
+	return {f32(runes) * f32(config.fontSize) * 0.5, f32(config.fontSize)}
 }
 
 test_clay_error :: proc "c" (error: clay.ErrorData) {
@@ -148,6 +150,8 @@ expect_rendered_layout :: proc(
 	boards: [MAX_PLAYER_COUNT]clay.BoundingBox
 	discs: [2 * MAX_PLAYER_COUNT + 2]clay.BoundingBox
 	board_count, disc_count, label_count, tile_count := 0, 0, 0, 0
+	penalty_count := 0
+	expected_penalties := [FLOOR_SIZE]string{"−1", "−1", "−2", "−2", "−2", "−3", "−3"}
 	for command in commands {
 		bb := command.boundingBox
 		testing.expectf(
@@ -164,20 +168,35 @@ expect_rendered_layout :: proc(
 		)
 		if command.commandType == .Text {
 			label := command.renderData.text.stringContents
-			testing.expect(
-				t,
-				string(label.chars[:label.length]) ==
-				PATTERN_LINE_LABELS[label_count % WALL_DIMENSION],
-			)
-			label_count += 1
+			if label.length > 1 {
+				col := penalty_count % FLOOR_SIZE
+				testing.expect(t, string(label.chars[:label.length]) == expected_penalties[col])
+				if !testing.expect(t, board_count > 0) {return}
+				board := boards[board_count - 1]
+				padding := PLAYER_BOARD_PADDING_IN_TILES * layout.tile_size
+				center_x := board.x + padding + (f32(col) + 0.5) * layout.tile_size
+				center_y := board.y + padding +
+					(WALL_DIMENSION + AREAS_GAP_IN_TILES + 1 + FLOOR_LABEL_GAP_IN_TILES +
+					 FLOOR_LABEL_HEIGHT_IN_TILES / 2) * layout.tile_size
+				testing.expect(t, math.abs(bb.x + bb.width / 2 - center_x) < 0.01)
+				testing.expect(t, math.abs(bb.y + bb.height / 2 - center_y) < 0.01)
+				penalty_count += 1
+			} else {
+				testing.expect(
+					t,
+					string(label.chars[:label.length]) ==
+					PATTERN_LINE_LABELS[label_count % WALL_DIMENSION],
+				)
+				label_count += 1
+			}
 		}
-		if command.commandType != .Rectangle {continue}
+		if command.commandType != .Rectangle && command.commandType != .Image {continue}
 		element, known := elements[command.id]
 		if !known {continue}
 		if !testing.expectf(
 			t,
 			!element.seen,
-			"%v players in %v: duplicate %v rectangle with ID %v",
+			"%v players in %v: duplicate %v element with ID %v",
 			layout.player_count,
 			viewport,
 			element.kind,
@@ -187,15 +206,26 @@ expect_rendered_layout :: proc(
 		elements[command.id] = element
 		switch element.kind {
 		case .Player_Board:
+			testing.expect(t, command.commandType == .Image)
+			testing.expect(t, command.renderData.image.imageData == rawptr(&PLAYER_BOARD_SPRITE))
 			if !testing.expect(t, board_count < len(boards)) {return}
 			boards[board_count] = bb
 			board_count += 1
 		case .Factory_Disc:
+			testing.expect(t, command.commandType == .Image)
+			testing.expect(t, command.renderData.image.imageData == rawptr(&FACTORY_SPRITE))
 			if !testing.expect(t, disc_count < len(discs)) {return}
 			discs[disc_count] = bb
 			disc_count += 1
 		case .Factory_Tile:
 			tile_count += 1
+			testing.expect(t, command.commandType == .Image)
+			testing.expect(t, command.renderData.image.imageData != nil)
+			if sprite := cast(^UI_Sprite)command.renderData.image.imageData; sprite != nil {
+				testing.expect(t, sprite.kind == .Tile)
+				testing.expect(t, sprite.source.width == 112 && sprite.source.height == 112)
+				testing.expect(t, sprite.color_index >= 0 && sprite.color_index < WALL_DIMENSION)
+			}
 			testing.expect(
 				t,
 				math.abs(bb.width - layout.tile_size) < 0.01 &&
@@ -208,7 +238,7 @@ expect_rendered_layout :: proc(
 		testing.expectf(
 			t,
 			element.seen,
-			"%v players in %v: missing %v rectangle with ID %v",
+			"%v players in %v: missing %v element with ID %v",
 			layout.player_count,
 			viewport,
 			element.kind,
@@ -216,8 +246,60 @@ expect_rendered_layout :: proc(
 		)
 	}
 	expect_player_board_layout(t, layout, boards[:board_count], label_count)
+	expect_player_board_padding(t, layout, commands)
 	expect_factory_disc_spacing(t, layout, discs[:disc_count])
+	testing.expect(t, penalty_count == layout.player_count * FLOOR_SIZE)
 	testing.expect(t, tile_count == factory_count * tiles_per_disc)
+}
+
+expect_player_board_padding :: proc(
+	t: ^testing.T,
+	layout: Board_Layout,
+	commands: []clay.RenderCommand,
+) {
+	padding := PLAYER_BOARD_PADDING_IN_TILES * layout.tile_size
+	for player in 0 ..< layout.player_count {
+		board := clay.GetElementData(clay.ID("PlayerBoard", u32(player)))
+		content := clay.GetElementData(clay.ID("PlayerBoardContent", u32(player)))
+		if !testing.expect(t, board.found && content.found) {continue}
+		outer, inner := board.boundingBox, content.boundingBox
+		frame := f32(PLAYER_BOARD_SPRITE.border) * min(
+			outer.width / PLAYER_BOARD_SPRITE.source.width,
+			outer.height / PLAYER_BOARD_SPRITE.source.height,
+		)
+		testing.expect(t, padding > frame)
+		for margin in ([]f32{
+			inner.x - outer.x,
+			inner.y - outer.y,
+			outer.x + outer.width - inner.x - inner.width,
+			outer.y + outer.height - inner.y - inner.height,
+		}) {
+			testing.expect(t, math.abs(margin - padding) < 0.01)
+		}
+		for command in commands {
+			if command.commandType == .Image &&
+			   command.renderData.image.imageData == rawptr(&PLAYER_BOARD_SPRITE) {
+				continue
+			}
+			bb := command.boundingBox
+			if bb.x < outer.x - 0.01 || bb.y < outer.y - 0.01 ||
+			   bb.x + bb.width > outer.x + outer.width + 0.01 ||
+			   bb.y + bb.height > outer.y + outer.height + 0.01 {
+				continue
+			}
+			testing.expectf(
+				t,
+				bb.x >= inner.x - 0.01 && bb.y >= inner.y - 0.01 &&
+				bb.x + bb.width <= inner.x + inner.width + 0.01 &&
+				bb.y + bb.height <= inner.y + inner.height + 0.01,
+				"%v players: element %v overlaps player %v's frame: %v",
+				layout.player_count,
+				command.id,
+				player,
+				bb,
+			)
+		}
+	}
 }
 
 expect_player_board_layout :: proc(
