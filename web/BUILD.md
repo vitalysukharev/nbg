@@ -20,7 +20,10 @@ serve `.wasm` as `application/wasm` and enable HTTP compression. Keep textures
 and the font outside WASM so browsers can cache them independently. The page
 must be served over HTTP or HTTPS, rather than opened directly with `file://`.
 
-`main_web.odin` provides the browser entry point and animation-frame export.
+`app.odin` owns the shared app state, Clay arena, and frame updates. Platform
+entry points poll input and draw the resulting commands before the next update;
+the commands borrow Clay's arena. `main_web.odin` provides the browser entry point
+and animation-frame export.
 `renderer_web.odin` batches textured triangles through `vendor:wasm/WebGL`,
 including nine-slice boards, repeating wood, rounded slots, bitmap text, and
 scissor clipping. The shader sources there are the starting point for additional
@@ -28,7 +31,14 @@ effects. `web/app.js` adds browser image uploads, font metrics, input, and resiz
 to the matching `odin.js` copied from the installed compiler.
 
 Desktop keeps its raylib renderer; layouts, sprite descriptors, theme, and rules
-are shared. Rebuild after changing Odin code or assets. The build script also
+are shared. `renderer_common.odin` shares nine-slice geometry and font sizing
+between the renderers. Compile-time assertions in the browser input and glyph
+definitions guard the memory layout used by `web/app.js`.
+
+Run native checks with `odin check . -vet -strict-style` and
+`odin test . -vet -strict-style -out:/tmp/nbg-tests`.
+
+Rebuild after changing Odin code or assets. The build script also
 accepts an output directory: `bash scripts/build-web.sh /path/to/output`.
 
 Run the browser checks after building (Node 22+ and Chromium required):

@@ -2,7 +2,6 @@
 
 package main
 
-import "base:runtime"
 import "clay"
 import "core:math"
 import gl "vendor:wasm/WebGL"
@@ -10,14 +9,6 @@ import gl "vendor:wasm/WebGL"
 Web_Texture :: struct {
 	handle:        gl.Texture,
 	width, height: f32,
-}
-
-// Eight 32-bit words per glyph, also written by web/app.js.
-Web_Glyph :: struct {
-	codepoint: rune,
-	source:    Sprite_Rect,
-	offset:    [2]f32,
-	advance:   f32,
 }
 
 Web_Vertex :: struct {
@@ -30,13 +21,11 @@ Renderer :: struct {
 	buffer:           gl.Buffer,
 	viewport_uniform: i32,
 	textures:         [Sprite_Kind]Web_Texture,
-	font, white:      Web_Texture,
-	glyphs:           [128]Web_Glyph,
-	glyph_count:      int,
-	font_height:      f32,
+	font:             Web_Font,
+	white:            Web_Texture,
 	vertices:         [dynamic]Web_Vertex,
 	batch_texture:    gl.Texture,
-	width, height:    f32,
+	height:           f32,
 	pixel_ratio:      f32,
 	clips:            [32]clay.BoundingBox,
 	clip_count:       int,
@@ -114,22 +103,14 @@ renderer_init :: proc(renderer: ^Renderer) {
 	renderer.vertices = make([dynamic]Web_Vertex, 0, 8192)
 	dimensions := [Sprite_Kind][2]f32 {
 		.Tile = {640, 128},
-		.Factory = {192, 128},
-		.Player_Board = {384, 256},
-		.Table = {512, 512},
+		.Factory = {FACTORY_SPRITE.source.width, FACTORY_SPRITE.source.height},
+		.Player_Board = {PLAYER_BOARD_SPRITE.source.width, PLAYER_BOARD_SPRITE.source.height},
+		.Table = {TABLE_SPRITE.source.width, TABLE_SPRITE.source.height},
 	}
 	for size, kind in dimensions {
 		renderer.textures[kind] = web_load_texture(i32(kind), size, kind == .Table)
 	}
-	renderer.font = web_load_texture(4, {512, 1024}, false)
-	renderer.glyph_count = int(read_font(
-		&renderer.glyphs[0],
-		i32(len(renderer.glyphs)),
-		&renderer.font_height,
-	))
-	if renderer.glyph_count <= 0 || renderer.font_height <= 0 {
-		report_error("The game font could not be loaded.")
-	}
+	renderer.font = web_load_font()
 	renderer.white = {handle = gl.CreateTexture(), width = 1, height = 1}
 	gl.BindTexture(gl.TEXTURE_2D, renderer.white.handle)
 	pixel := [4]u8{255, 255, 255, 255}
@@ -157,7 +138,7 @@ web_texture_parameters :: proc(repeat: bool) {
 
 renderer_shutdown :: proc(renderer: ^Renderer) {
 	for texture in renderer.textures {gl.DeleteTexture(texture.handle)}
-	gl.DeleteTexture(renderer.font.handle)
+	gl.DeleteTexture(renderer.font.texture.handle)
 	gl.DeleteTexture(renderer.white.handle)
 	gl.DeleteBuffer(renderer.buffer)
 	gl.DeleteProgram(renderer.program)
@@ -166,7 +147,7 @@ renderer_shutdown :: proc(renderer: ^Renderer) {
 }
 
 renderer_begin :: proc(renderer: ^Renderer, width, height, pixel_ratio: f32) {
-	renderer.width, renderer.height = width, height
+	renderer.height = height
 	renderer.pixel_ratio = pixel_ratio
 	gl.Viewport(0, 0, gl.DrawingBufferWidth(), gl.DrawingBufferHeight())
 	gl.Disable(gl.SCISSOR_TEST)
@@ -258,75 +239,14 @@ web_rectangle :: proc(
 	}
 }
 
-web_glyph :: proc(renderer: ^Renderer, codepoint: rune) -> Web_Glyph {
-	fallback: Web_Glyph
-	for glyph in renderer.glyphs[:renderer.glyph_count] {
-		if glyph.codepoint == codepoint {return glyph}
-		if glyph.codepoint == '?' {fallback = glyph}
-	}
-	return fallback
-}
-
-measure_clay_text :: proc "c" (
-	text: clay.StringSlice,
-	config: ^clay.TextElementConfig,
-	user_data: rawptr,
-) -> clay.Dimensions {
-	context = runtime.default_context()
-	renderer := cast(^Renderer)user_data
-	font_size := f32(config.fontSize) if config.fontSize > 0 else DEFAULT_FONT_SIZE
-	scale := font_size / renderer.font_height
-	width, line_width: f32
-	lines, count := 1, 0
-	for codepoint in string(text.chars[:text.length]) {
-		if codepoint == '\n' {
-			width = max(width, line_width)
-			line_width, count = 0, 0
-			lines += 1
-			continue
-		}
-		if count > 0 {line_width += f32(config.letterSpacing)}
-		line_width += web_glyph(renderer, codepoint).advance * scale
-		count += 1
-	}
-	return {max(width, line_width), f32(lines) * font_size}
-}
-
-web_text :: proc(renderer: ^Renderer, bb: clay.BoundingBox, text: clay.TextRenderData) {
-	font_size := f32(text.fontSize) if text.fontSize > 0 else DEFAULT_FONT_SIZE
-	scale := font_size / renderer.font_height
-	x, y := bb.x, bb.y
-	for codepoint in string(text.stringContents.chars[:text.stringContents.length]) {
-		if codepoint == '\n' {x, y = bb.x, y + font_size; continue}
-		glyph := web_glyph(renderer, codepoint)
-		if codepoint != ' ' {
-			web_quad(renderer, renderer.font, glyph.source,
-				{x + glyph.offset.x * scale, y + glyph.offset.y * scale,
-				 glyph.source.width * scale, glyph.source.height * scale}, text.textColor)
-		}
-		x += glyph.advance * scale + f32(text.letterSpacing)
-	}
-}
-
 web_image :: proc(renderer: ^Renderer, bb: clay.BoundingBox, data: clay.ImageRenderData) {
 	sprite := cast(^UI_Sprite)data.imageData
 	if sprite == nil {web_rectangle(renderer, bb, data.backgroundColor); return}
 	texture := renderer.textures[sprite.kind]
 	source := sprite.source
 	if sprite.border > 0 {
-		border := f32(sprite.border)
-		margin := min(border * min(bb.width / source.width, bb.height / source.height),
-			min(bb.width, bb.height) / 2)
-		sx := [4]f32{0, border, source.width - border, source.width}
-		sy := [4]f32{0, border, source.height - border, source.height}
-		dx := [4]f32{0, margin, bb.width - margin, bb.width}
-		dy := [4]f32{0, margin, bb.height - margin, bb.height}
-		for row in 0 ..< 3 {
-			for col in 0 ..< 3 {
-				web_quad(renderer, texture,
-					{source.x + sx[col], source.y + sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row]},
-					{bb.x + dx[col], bb.y + dy[row], dx[col + 1] - dx[col], dy[row + 1] - dy[row]})
-			}
+		for slice in get_sprite_panel_slices(sprite, bb) {
+			web_quad(renderer, texture, slice.source, slice.destination)
 		}
 	} else {
 		if sprite.kind == .Table {source = {0, 0, bb.width, bb.height}}
@@ -335,13 +255,9 @@ web_image :: proc(renderer: ^Renderer, bb: clay.BoundingBox, data: clay.ImageRen
 }
 
 web_border :: proc(renderer: ^Renderer, bb: clay.BoundingBox, data: clay.BorderRenderData) {
-	w := data.width
-	for side in ([]clay.BoundingBox{
-		{bb.x, bb.y, f32(w.left), bb.height},
-		{bb.x + bb.width - f32(w.right), bb.y, f32(w.right), bb.height},
-		{bb.x, bb.y, bb.width, f32(w.top)},
-		{bb.x, bb.y + bb.height - f32(w.bottom), bb.width, f32(w.bottom)},
-	}) {web_rectangle(renderer, side, data.color)}
+	for side in get_border_sides(bb, data.width) {
+		web_rectangle(renderer, side, data.color)
+	}
 }
 
 web_apply_clip :: proc(renderer: ^Renderer) {

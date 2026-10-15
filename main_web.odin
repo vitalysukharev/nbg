@@ -4,7 +4,6 @@ package main
 
 import "base:runtime"
 import "clay"
-import "core:c"
 import gl "vendor:wasm/WebGL"
 
 // ABI shared with web/app.js: eight float32 values followed by two int32 flags.
@@ -14,6 +13,19 @@ Browser_Input :: struct {
 	visible:                  f32,
 	held, pressed:            i32,
 }
+
+// Keep these offsets compatible with the typed-array writes in web/app.js.
+#assert(size_of(Browser_Input) == 40)
+#assert(offset_of(Browser_Input, width) == 0)
+#assert(offset_of(Browser_Input, height) == 4)
+#assert(offset_of(Browser_Input, pixel_ratio) == 8)
+#assert(offset_of(Browser_Input, x) == 12)
+#assert(offset_of(Browser_Input, y) == 16)
+#assert(offset_of(Browser_Input, wheel_x) == 20)
+#assert(offset_of(Browser_Input, wheel_y) == 24)
+#assert(offset_of(Browser_Input, visible) == 28)
+#assert(offset_of(Browser_Input, held) == 32)
+#assert(offset_of(Browser_Input, pressed) == 36)
 
 foreign import browser "nbg"
 
@@ -25,25 +37,11 @@ foreign browser {
 	report_error :: proc(message: string) ---
 }
 
-Web_App :: struct {
-	clay_memory:  []u8,
-	renderer:     Renderer,
-	player_count: int,
-}
-
-web_app: Web_App
+web_app: App
 web_running: bool
 
 main :: proc() {
-	renderer_init(&web_app.renderer)
-	web_app.clay_memory = make([]u8, clay.MinMemorySize())
-	arena := clay.CreateArenaWithCapacityAndMemory(
-		c.size_t(len(web_app.clay_memory)),
-		raw_data(web_app.clay_memory),
-	)
-	clay.Initialize(arena, {800, 600}, {handler = clay_error_handler})
-	clay.SetMeasureTextFunction(measure_clay_text, &web_app.renderer)
-	web_app.player_count = MIN_PLAYER_COUNT
+	app_init(&web_app, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)
 	web_running = true
 }
 
@@ -55,16 +53,15 @@ step :: proc(delta_time: f64) -> bool {
 	input: Browser_Input
 	read_input(&input)
 	if input.visible == 0 || input.width <= 0 || input.height <= 0 {return true}
-	if input.pressed != 0 {
-		web_app.player_count = web_app.player_count + 1 if
-			web_app.player_count < MAX_PLAYER_COUNT else MIN_PLAYER_COUNT
-	}
-	clay.SetLayoutDimensions({input.width, input.height})
-	clay.SetPointerState({input.x, input.y}, input.held != 0)
 	frame_time := f32(clamp(delta_time, 0, 0.1))
-	clay.UpdateScrollContainers(false, {input.wheel_x, input.wheel_y}, frame_time)
-	layout := calculate_board_layout(input.width, input.height, web_app.player_count)
-	commands := create_layout(layout, frame_time)
+	commands := app_update(
+		&web_app,
+		input.width,
+		input.height,
+		{position = {input.x, input.y}, held = input.held != 0, pressed = input.pressed != 0},
+		{input.wheel_x, input.wheel_y},
+		frame_time,
+	)
 	renderer_begin(&web_app.renderer, input.width, input.height, input.pixel_ratio)
 	render_clay_commands(&web_app.renderer, commands)
 	return true
@@ -80,10 +77,7 @@ shutdown :: proc "c" () {
 	context = runtime.default_context()
 	if !web_running {return}
 	web_running = false
-	clay.SetCurrentContext(nil)
-	delete(web_app.clay_memory)
-	renderer_shutdown(&web_app.renderer)
-	web_app = {}
+	app_shutdown(&web_app)
 }
 
 clay_error_handler :: proc "c" (error: clay.ErrorData) {

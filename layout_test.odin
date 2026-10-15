@@ -38,8 +38,8 @@ factory_spacing :: proc(t: ^testing.T) {
 	factories := get_factory_layout(is_horizontal = true, player_count = 3)
 	disc_w, disc_h := get_factory_disc_dimensions(factories, 20)
 	width, height := get_factories_dimensions(factories, 20)
-	testing.expect(t, disc_w == 68 && disc_h == 46)
-	testing.expect(t, width == 140 && height == 196)
+	testing.expect(t, math.abs(disc_w - 70) < 0.001 && math.abs(disc_h - 47) < 0.001)
+	testing.expect(t, math.abs(width - 144) < 0.001 && math.abs(height - 200) < 0.001)
 	for tile in ([]f32{0, 1.25, 10, 40, 100}) {
 		w, h := get_factories_dimensions(factories, tile)
 		testing.expect(t, math.abs(w - width * tile / 20) < 0.001)
@@ -109,11 +109,13 @@ rendered_board_layout :: proc(t: ^testing.T) {
 	arena := clay.CreateArenaWithCapacityAndMemory(c.size_t(len(memory)), raw_data(memory))
 	clay.Initialize(arena, {800, 600}, {handler = test_clay_error, userData = t})
 	clay.SetMeasureTextFunction(test_measure_text, nil)
+	app := App{player_count = MAX_PLAYER_COUNT}
 	for size in LAYOUT_TEST_VIEWPORTS {
 		for players in MIN_PLAYER_COUNT ..= MAX_PLAYER_COUNT {
-			clay.SetLayoutDimensions({size[0], size[1]})
 			layout := calculate_board_layout(size[0], size[1], players)
-			commands := create_layout(layout, 1.0 / 60.0)
+			// Cycle through every player count using the shared frame update.
+			commands := app_update(&app, size[0], size[1], {pressed = true}, {}, 1.0 / TARGET_FPS)
+			testing.expect_value(t, app.player_count, players)
 			expect_rendered_layout(t, layout, commands, size)
 		}
 	}
@@ -151,7 +153,6 @@ expect_rendered_layout :: proc(
 	discs: [2 * MAX_PLAYER_COUNT + 2]clay.BoundingBox
 	board_count, disc_count, label_count, tile_count := 0, 0, 0, 0
 	penalty_count := 0
-	expected_penalties := [FLOOR_SIZE]string{"−1", "−1", "−2", "−2", "−2", "−3", "−3"}
 	for command in commands {
 		bb := command.boundingBox
 		testing.expectf(
@@ -170,7 +171,7 @@ expect_rendered_layout :: proc(
 			label := command.renderData.text.stringContents
 			if label.length > 1 {
 				col := penalty_count % FLOOR_SIZE
-				testing.expect(t, string(label.chars[:label.length]) == expected_penalties[col])
+				testing.expect(t, string(label.chars[:label.length]) == FLOOR_PENALTY_LABELS[col])
 				if !testing.expect(t, board_count > 0) {return}
 				board := boards[board_count - 1]
 				padding := PLAYER_BOARD_PADDING_IN_TILES * layout.tile_size

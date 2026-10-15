@@ -69,10 +69,6 @@ clay_text_to_cstring :: proc(text: clay.StringSlice) -> cstring {
 	return strings.clone_to_cstring(string(text.chars[:text.length]), context.temp_allocator)
 }
 
-clay_font_size :: proc(size: u16) -> f32 {
-	return f32(size) if size > 0 else DEFAULT_FONT_SIZE
-}
-
 measure_clay_text :: proc "c" (
 	text: clay.StringSlice,
 	config: ^clay.TextElementConfig,
@@ -144,22 +140,9 @@ draw_clay_border :: proc(
 		warn_renderer_limitation(renderer, .Rounded_Borders)
 	}
 	color := clay_color_to_rl_color(border.color)
-	widths := border.width
-	sides := [4]struct {
-		thickness: u16,
-		bounds:    rl.Rectangle,
-	} {
-		{widths.left, {bb.x, bb.y, f32(widths.left), bb.height}},
-		{widths.right, {bb.x + bb.width - f32(widths.right), bb.y, f32(widths.right), bb.height}},
-		{widths.top, {bb.x, bb.y, bb.width, f32(widths.top)}},
-		{
-			widths.bottom,
-			{bb.x, bb.y + bb.height - f32(widths.bottom), bb.width, f32(widths.bottom)},
-		},
-	}
-	for side in sides {
-		if side.thickness == 0 {continue}
-		rl.DrawRectangleRec(side.bounds, color)
+	for side in get_border_sides(bb, border.width) {
+		if side.width <= 0 || side.height <= 0 {continue}
+		rl.DrawRectangleRec(clay_box_to_rl_rectangle(side), color)
 	}
 }
 
@@ -223,26 +206,16 @@ draw_clay_image :: proc(renderer: ^Renderer, bb: clay.BoundingBox, data: clay.Im
 
 draw_sprite_panel :: proc(texture: rl.Texture2D, sprite: ^UI_Sprite, bb: clay.BoundingBox) {
 	if bb.width <= 0 || bb.height <= 0 {return}
-	source := sprite.source
-	border := f32(sprite.border)
-	// Scale corners uniformly, then stretch only the edges and quiet center.
-	scale := min(bb.width / source.width, bb.height / source.height)
-	margin := min(border * scale, min(bb.width, bb.height) / 2)
-	sx := [4]f32{0, border, source.width - border, source.width}
-	sy := [4]f32{0, border, source.height - border, source.height}
-	dx := [4]f32{0, margin, bb.width - margin, bb.width}
-	dy := [4]f32{0, margin, bb.height - margin, bb.height}
-	for row in 0 ..< 3 {
-		for col in 0 ..< 3 {
-			rl.DrawTexturePro(
-				texture,
-				{source.x + sx[col], source.y + sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row]},
-				{bb.x + dx[col], bb.y + dy[row], dx[col + 1] - dx[col], dy[row + 1] - dy[row]},
-				{0, 0},
-				0,
-				rl.WHITE,
-			)
-		}
+	for slice in get_sprite_panel_slices(sprite, bb) {
+		source := slice.source
+		rl.DrawTexturePro(
+			texture,
+			{source.x, source.y, source.width, source.height},
+			clay_box_to_rl_rectangle(slice.destination),
+			{0, 0},
+			0,
+			rl.WHITE,
+		)
 	}
 }
 
